@@ -1,0 +1,6 @@
+/vendor/
+/node_modules/
+/public/audios/
+/tmp/
+*.log
+.env
