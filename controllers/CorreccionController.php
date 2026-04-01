@@ -264,7 +264,7 @@ class CorreccionController
         $chunks = $this->chunkText($texto, 9000);
 
         // ✅ usa variable de entorno (no hardcode)
-        $apiKey = getenv('OPENAI_API_KEY');
+        $apiKey = $_ENV['OPENAI_API_KEY'] ?? null;
         if (!$apiKey) {
             echo json_encode(['error' => 'OPENAI_API_KEY no configurada en el servidor'], JSON_UNESCAPED_UNICODE);
             return;

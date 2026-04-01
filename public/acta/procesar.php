@@ -23,7 +23,7 @@ if ($orden === '' || $trans === '') {
 }
 
 // ===== 2) Configuración =====
-$apiKey = getenv('OPENAI_API_KEY');// o reemplaza por tu string; mejor por variable de entorno
+$apiKey = $_ENV['OPENAI_API_KEY'] ?? null;// o reemplaza por tu string; mejor por variable de entorno
 if (!$apiKey) {
   $_SESSION['error_msg'] = "No se encontró OPENAI_API_KEY en el entorno.";
   header("Location: index.php#resultado");

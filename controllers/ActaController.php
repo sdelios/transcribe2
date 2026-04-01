@@ -127,7 +127,7 @@ class ActaController
 
         // ===== 2) Configuración =====
         // ⚠️ Mejor usar variable de entorno: setx OPENAI_API_KEY "sk-xxxx" (Windows) o export en Linux/macOS
-        $apiKey = getenv('OPENAI_API_KEY');
+        $apiKey = $_ENV['OPENAI_API_KEY'] ?? null;
         if (!$apiKey) {
             // Si quisieras, aquí podrías poner un fallback hardcodeado solo para pruebas locales:
             // $apiKey = 'sk-...';
@@ -641,7 +641,7 @@ public function procesarconarchivo() {
     }
 
     // ===== 2) Config =====
-    $apiKey = getenv('OPENAI_API_KEY');
+   $apiKey = $_ENV['OPENAI_API_KEY'] ?? null;
     if (!$apiKey) {
         $_SESSION['error_msg'] = "No se encontró OPENAI_API_KEY en el entorno.";
         header("Location: index.php?ruta=transcripcion/acta#resultado-archivo");
@@ -946,7 +946,7 @@ public function procesarconarchivo2pasos() {
     }
 
     // ===== 2) Config =====
-    $apiKey = getenv('OPENAI_API_KEY');
+    $apiKey = $_ENV['OPENAI_API_KEY'] ?? null;
     if (!$apiKey) {
         $_SESSION['error_msg'] = "No se encontró OPENAI_API_KEY.";
         header("Location: index.php?ruta=transcripcion/acta#resultado-archivo"); exit;
