@@ -154,6 +154,7 @@ class CorreccionController
         $idCorreccion = $ultima && !empty($ultima['id']) ? (int)$ultima['id'] : 0;
 
         if ($idCorreccion <= 0) {
+            // Crea placeholder usando el texto original (para que exista corrección_id)
             $transModel = new TranscripcionModel();
             $trans = $transModel->obtenerPorId($idTrans);
             $textoOriginal = $trans['tTrans'] ?? '';
@@ -202,6 +203,7 @@ class CorreccionController
             'tObservaciones'     => null
         ]);
 
+        // Tu modelo puede devolver bool o array; soportamos ambos
         $okMeta = is_array($metaDb) ? (bool)($metaDb['ok'] ?? false) : (bool)$metaDb;
 
         if (!$okMeta) {
@@ -224,7 +226,8 @@ class CorreccionController
     }
 
     // ============================================================
-    //                     PROCESAR CORRECCIÓN (Claude API)
+    //                     PROCESAR CORRECCIÓN
+    //         ✅ NUEVO: incluye INASISTENCIAS para mencionarlas
     // ============================================================
     public function procesar() {
 
@@ -236,6 +239,7 @@ class CorreccionController
         $nombres = $_POST['nombres'] ?? '[]';
         $idCorreccion = $_POST['correccion_id'] ?? '';
 
+        // ✅ NUEVO: viene desde la vista (universo - mesa - asistentes)
         $jInasistencias = $_POST['jInasistencias'] ?? '[]';
 
         $tokenCliente = $_POST['meta_token'] ?? '';
@@ -270,17 +274,17 @@ class CorreccionController
             return;
         }
 
-        // Chunking inteligente por límites de hablante
         $chunks = $this->chunkTextInteligente($texto, 9000);
 
-        $apiKey = $_ENV['ANTHROPIC_API_KEY'] ?? null;
+        // ✅ usa variable de entorno (no hardcode)
+        $apiKey = $_ENV['OPENAI_API_KEY'] ?? null;
         if (!$apiKey) {
-            echo json_encode(['error' => 'ANTHROPIC_API_KEY no configurada en el servidor'], JSON_UNESCAPED_UNICODE);
+            echo json_encode(['error' => 'OPENAI_API_KEY no configurada en el servidor'], JSON_UNESCAPED_UNICODE);
             return;
         }
 
         $diputadosLista = implode("\n", json_decode($nombres, true));
-        $modelo = "claude-sonnet-4-6";
+        $modelo = "gpt-4.1-2025-04-14";
 
         $usuarioModel = new UsuarioModel();
 
@@ -372,9 +376,14 @@ DIPUTADOS INASISTENTES (según presidencia / no marcados como asistentes):
 - Si necesitas referirte a la Mesa Directiva, usa exactamente los nombres anteriores.
 ";
 
-        // System prompt que será cacheado en Claude (se repite por chunk)
-        $systemPromptText =
-$contextoSesion . "
+        $resultado = '';
+        $idxOpenAI  = 0;
+
+        foreach ($chunks as $parte) {
+            if ($idxOpenAI++ > 0) sleep(3);
+
+            $prompt = "
+$contextoSesion
 Eres el taquígrafo oficial del H. Congreso del Estado de Yucatán.
 
 Reglas obligatorias:
@@ -393,93 +402,54 @@ $diputadosLista
    • En la lista de asistencia, incluye un apartado de INASISTENCIAS SOLO si la modalidad es 'pleno' y la lista fue proporcionada.
 
 4) NO resumas, NO omitas nada, NO combines párrafos.
-5) Intenta siempre deducir la palabra correcta por contexto antes de marcarla. Solo usa «[sic: texto]» cuando una secuencia sea genuinamente incomprensible e imposible de deducir incluso con contexto. Nunca uses sic para palabras que simplemente tienen acento incorrecto, están mal separadas o son nombres propios conocidos.
+5) Si una palabra no se entiende: «[sic: texto]».
 6) No inventes información.
-7) Devuelve ÚNICAMENTE el texto taquigráfico corregido, sin comentarios, sin marcadores de fragmento, sin encabezados propios.
-8) Inicia cada intervención con la palabra DIPUTADO o DIPUTADA según el caso.";
+7) Devuelve solo el texto taquigráfico corregido, sin comentarios.
+8) Inicia cada intervención con la palabra DIPUTADO o DIPUTADA según el caso.
+9) Marca los límites entre fragmentos usando las palabras REALES del texto que procesas:
+   - Si NO es el primer fragmento: primera línea → (INICIA: '[primeras 5-6 palabras del fragmento]')
+   - Si NO es el último fragmento: última línea → (CONTINUARA: '[últimas 5-6 palabras del fragmento]')
+   Ejemplo: (CONTINUARA: 'señaló que la propuesta debería')  /  (INICIA: 'propuesta debería someterse a votación')
+   Las palabras citadas deben ser texto real del fragmento para facilitar identificar la unión.
 
-        $resultado = '';
-        $totalChunks = count($chunks);
-
-        foreach ($chunks as $idx => $parte) {
-
-            // Pausa entre chunks para no superar el rate limit de 30k tokens/min
-            if ($idx > 0) sleep(8);
-
-            $nChunk = $idx + 1;
-            $userContent = $nChunk === 1
-                ? "Fragmento $nChunk de $totalChunks:\n\n$parte"
-                : "Fragmento $nChunk de $totalChunks (continuación del anterior):\n\n$parte";
+Fragmento:
+$parte
+";
 
             $payload = [
                 "model" => $modelo,
-                "max_tokens" => 8000,
                 "temperature" => 0.1,
-                "system" => [
-                    [
-                        "type" => "text",
-                        "text" => $systemPromptText,
-                        "cache_control" => ["type" => "ephemeral"]
-                    ]
-                ],
                 "messages" => [
-                    [
-                        "role" => "user",
-                        "content" => $userContent
-                    ]
+                    ["role" => "user", "content" => $prompt]
                 ]
             ];
 
-            $ch = curl_init("https://api.anthropic.com/v1/messages");
+            $ch = curl_init("https://api.openai.com/v1/chat/completions");
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_POST           => true,
-                CURLOPT_HTTPHEADER     => [
-                    "x-api-key: $apiKey",
-                    "anthropic-version: 2023-06-01",
-                    "anthropic-beta: prompt-caching-2024-07-31",
-                    "content-type: application/json"
+                CURLOPT_POST => true,
+                CURLOPT_HTTPHEADER => [
+                    "Authorization: Bearer $apiKey",
+                    "Content-Type: application/json"
                 ],
-                CURLOPT_POSTFIELDS      => json_encode($payload, JSON_UNESCAPED_UNICODE),
-                CURLOPT_CONNECTTIMEOUT  => 30,
-                CURLOPT_TIMEOUT         => 600,
-                CURLOPT_TCP_KEEPALIVE   => 1,
-                CURLOPT_SSL_VERIFYPEER  => false,
-                CURLOPT_SSL_VERIFYHOST  => false,
+                CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_UNICODE),
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => false,
             ]);
 
-            $resp    = curl_exec($ch);
-            $http    = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $curlErr = curl_error($ch);
+            $resp = curl_exec($ch);
+            $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
 
-            if ($curlErr) {
-                echo json_encode([
-                    'error' => "Error de conexión con la API: $curlErr"
-                ], JSON_UNESCAPED_UNICODE);
-                return;
-            }
-
             if ($http !== 200) {
-                $apiMsg = '';
-                $parsed = json_decode($resp, true);
-                if (!empty($parsed['error']['message'])) {
-                    $apiMsg = $parsed['error']['message'];
-                } elseif (!empty($parsed['error']['type'])) {
-                    $apiMsg = $parsed['error']['type'];
-                }
-                echo json_encode([
-                    'error' => "Error API Claude (HTTP $http)" . ($apiMsg ? ": $apiMsg" : ''),
-                    'detalle' => $resp
-                ], JSON_UNESCAPED_UNICODE);
+                echo json_encode(['error' => 'Error OpenAI', 'detalle' => $resp], JSON_UNESCAPED_UNICODE);
                 return;
             }
 
             $json = json_decode($resp, true);
-            $resultado .= ($json['content'][0]['text'] ?? '') . "\n";
+            $resultado .= ($json['choices'][0]['message']['content'] ?? '') . "\n";
         }
 
-        $resultado  = $this->limpiarMarcas($resultado);
         $charsNuevo = mb_strlen($resultado);
 
         if (!empty($idCorreccion)) {
@@ -496,6 +466,7 @@ $diputadosLista
 
         $_SESSION['ultima_correccion_por_trans'][$id] = (int)$idCorr;
 
+        // ✅ Garantiza metadatos en BD (siempre que haya corrección)
         if ($iIdCatTipoSesiones > 0 && $idCorr > 0) {
             $this->modelo->upsertMetadatosSesion([
                 'iIdCorreccion'      => (int)$idCorr,
@@ -508,7 +479,7 @@ $diputadosLista
                 'iIdSecretario2'     => (int)$iIdSecretario2,
                 'jAsistentes'        => json_encode($asistentesIds, JSON_UNESCAPED_UNICODE),
                 'dFechaSesion'       => $dFechaSesion,
-                'tObservaciones'     => $tObservaciones,
+                'tObservaciones'     => $tObservaciones
             ]);
         }
 
@@ -529,6 +500,7 @@ $diputadosLista
         $this->ensureSession();
         header('Content-Type: application/json; charset=utf-8');
 
+        // Acepta ambos nombres por compatibilidad
         $idCorreccion = (int)($_POST['id_correccion'] ?? 0);
         $idTrans      = (int)($_POST['id_transcripcion'] ?? ($_POST['id'] ?? 0));
         $textoNuevo   = $_POST['texto'] ?? '';
@@ -538,10 +510,12 @@ $diputadosLista
             return;
         }
 
+        // ✅ 1) Fallback por sesión (si ya abriste iniciar y ahí sí sabemos el id)
         if ($idCorreccion <= 0 && $idTrans > 0 && !empty($_SESSION['ultima_correccion_por_trans'][$idTrans])) {
             $idCorreccion = (int)$_SESSION['ultima_correccion_por_trans'][$idTrans];
         }
 
+        // ✅ 2) Fallback por BD usando transcripción
         if ($idCorreccion <= 0 && $idTrans > 0) {
             $ultima = $this->modelo->obtenerUltima($idTrans);
             if ($ultima && !empty($ultima['id'])) {
@@ -563,6 +537,7 @@ $diputadosLista
             return;
         }
 
+        // limpiar marcas
         $textoLimpio = $this->limpiarMarcas($textoNuevo);
         $charsNuevo  = mb_strlen($textoLimpio);
 
@@ -577,18 +552,11 @@ $diputadosLista
     }
 
     // ============================================================
-    //   CHUNKING INTELIGENTE: respeta límites de hablante
+    //                  CHUNKING INTELIGENTE
     // ============================================================
-
-    /**
-     * Divide el texto en chunks de hasta $maxLen caracteres,
-     * intentando siempre cortar en un cambio de hablante (speaker boundary).
-     * Cada chunk de continuación incluye nota del último hablante detectado.
-     */
     private function chunkTextInteligente(string $texto, int $maxLen = 9000): array
     {
         $texto = str_replace(["\r\n", "\r"], "\n", $texto);
-
         $segmentos = $this->dividirPorHablante($texto);
 
         $chunks = [];
@@ -599,25 +567,19 @@ $diputadosLista
             $seg = trim($seg);
             if ($seg === '') continue;
 
-            // Detectar hablante al inicio del segmento
             if (preg_match('/^([A-ZÁÉÍÓÚÜÑ][^\n:]{2,80}:)/u', $seg, $m)) {
                 $ultimoHablante = rtrim($m[1], ':');
             }
 
-            // Si el segmento solo excede el límite, subdividirlo
             if (mb_strlen($seg, 'UTF-8') > $maxLen) {
-                if (trim($actual) !== '') {
-                    $chunks[] = trim($actual);
-                    $actual   = '';
-                }
-                foreach ($this->dividirSegmentoGrande($seg, $maxLen) as $sub) {
+                if (trim($actual) !== '') { $chunks[] = trim($actual); $actual = ''; }
+                foreach ($this->dividirSegmentoGrande($seg, $maxLen, $ultimoHablante) as $sub) {
                     $chunks[] = $sub;
                 }
                 continue;
             }
 
             $candidato = $actual === '' ? $seg : $actual . "\n\n" . $seg;
-
             if (mb_strlen($candidato, 'UTF-8') > $maxLen) {
                 if ($actual !== '') $chunks[] = trim($actual);
                 $actual = $seg;
@@ -627,42 +589,24 @@ $diputadosLista
         }
 
         if (trim($actual) !== '') $chunks[] = trim($actual);
-
         return $chunks;
     }
 
-    /**
-     * Intenta detectar cambios de hablante con tres niveles de granularidad:
-     * 1) Encabezados taquigráficos formales (DIPUTADO/PRESIDENCIA/etc.)
-     * 2) Cualquier línea en MAYÚSCULAS terminada en dos puntos
-     * 3) Fallback: párrafos separados por doble salto de línea
-     */
     private function dividirPorHablante(string $texto): array
     {
-        // Nivel 1: formato taquigráfico oficial
         $p1 = '/(?=^(?:DIPUTADO|DIPUTADA|PRESIDENCIA|SECRETARIO|SECRETARIA|MESA\s+DIRECTIVA|VICEPRESIDENCIA|PROSECRETARIA|PROSECRETARIO)\b[^\n:]{0,180}:)/mu';
         $partes = preg_split($p1, $texto, -1, PREG_SPLIT_NO_EMPTY);
-        if ($partes && count($partes) > 3) {
-            return array_values(array_filter(array_map('trim', $partes)));
-        }
+        if ($partes && count($partes) > 3) return array_values(array_filter(array_map('trim', $partes)));
 
-        // Nivel 2: cualquier encabezado ALL-CAPS terminado en colon (formato Whisper diarizado)
         $p2 = '/(?=^[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ\s\.\'\-]{2,70}:\s*$)/mu';
         $partes = preg_split($p2, $texto, -1, PREG_SPLIT_NO_EMPTY);
-        if ($partes && count($partes) > 3) {
-            return array_values(array_filter(array_map('trim', $partes)));
-        }
+        if ($partes && count($partes) > 3) return array_values(array_filter(array_map('trim', $partes)));
 
-        // Nivel 3: párrafos (mucho mejor que corte duro por caracteres)
         $partes = preg_split('/\n{2,}/', $texto, -1, PREG_SPLIT_NO_EMPTY);
         return array_values(array_filter(array_map('trim', $partes)));
     }
 
-    /**
-     * Divide un segmento grande en sub-chunks de ≤ $maxLen,
-     * agrupando párrafos y añadiendo el nombre del hablante en los fragmentos de continuación.
-     */
-    private function dividirSegmentoGrande(string $seg, int $maxLen): array
+    private function dividirSegmentoGrande(string $seg, int $maxLen, string $hablante = ''): array
     {
         $partes = preg_split('/\n{2,}/', $seg, -1, PREG_SPLIT_NO_EMPTY);
         $salida = [];
@@ -671,16 +615,14 @@ $diputadosLista
         foreach ($partes as $p) {
             $p = trim($p);
             if ($p === '') continue;
-
             $cand = $buffer === '' ? $p : $buffer . "\n\n" . $p;
-
             if (mb_strlen($cand, 'UTF-8') > $maxLen) {
                 if ($buffer !== '') {
                     $salida[] = trim($buffer);
-                    $buffer   = $p;
+                    $prefijo  = $hablante ? "[CONTINÚA: $hablante]\n" : "[CONTINÚA]\n";
+                    $buffer   = $prefijo . $p;
                 } else {
-                    // Párrafo suelto demasiado grande: corte duro con traslape
-                    foreach ($this->corteDuroConTraslape($p, $maxLen, 0) as $x) {
+                    foreach ($this->corteDuroConTraslape($p, $maxLen, 200) as $x) {
                         $salida[] = trim($x);
                     }
                 }
@@ -690,7 +632,6 @@ $diputadosLista
         }
 
         if (trim($buffer) !== '') $salida[] = trim($buffer);
-
         return $salida ?: [trim($seg)];
     }
 
@@ -701,15 +642,14 @@ $diputadosLista
 
         $salida = [];
         $i = 0;
-        $margen = 150; // caracteres de margen para buscar límite de palabra
+        $margen = 150;
 
         while ($i < $len) {
             $chunk = mb_substr($texto, $i, $maxLen, 'UTF-8');
 
-            // Si no estamos al final, retroceder hasta el último espacio
             if ($i + $maxLen < $len) {
-                $chunkLen  = mb_strlen($chunk, 'UTF-8');
-                $buscarEn  = mb_substr($chunk, max(0, $chunkLen - $margen), $margen, 'UTF-8');
+                $chunkLen   = mb_strlen($chunk, 'UTF-8');
+                $buscarEn   = mb_substr($chunk, max(0, $chunkLen - $margen), $margen, 'UTF-8');
                 $posEspacio = mb_strrpos($buscarEn, ' ', 0, 'UTF-8');
                 if ($posEspacio !== false) {
                     $chunk = mb_substr($chunk, 0, $chunkLen - $margen + $posEspacio, 'UTF-8');
@@ -722,7 +662,7 @@ $diputadosLista
         return $salida;
     }
 
-    // Método legacy mantenido por compatibilidad
+    // Método legacy (ya no se usa, conservado por si acaso)
     private function chunkText($text, $maxLen) {
         $result = [];
         $len = mb_strlen($text);
@@ -769,7 +709,6 @@ $diputadosLista
     private function limpiarMarcas(string $txt): string
     {
         $txt = str_replace(["\r\n", "\r"], "\n", $txt);
-        // Elimina líneas que sean solo marcadores INICIA o CONTINUARA (con o sin contexto entre paréntesis)
         $txt = preg_replace('/^\s*\(?INICIA\b[^\n]*\)?\s*$/mi', '', $txt);
         $txt = preg_replace('/^\s*\(?CONTINUA[RÁA]\b[^\n]*\)?\s*$/mi', '', $txt);
         $txt = preg_replace("/\n{3,}/", "\n\n", $txt);

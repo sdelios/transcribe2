@@ -2,76 +2,92 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>ALCEY</title>
+    <title>ALCEY — Asistente Legislativo</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/transcribe2/public/css/estilos.css">
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/transcribe2/public/css/estilos.css">
 </head>
 <body>
 
 <?php
-// Aseguramos sesión para saber si hay usuario logueado
 if (session_status() === PHP_SESSION_NONE) session_start();
 $auth = $_SESSION['auth'] ?? null;
+$ruta_actual = $_GET['ruta'] ?? '';
 ?>
 
-<header class="bg-dark text-white p-3">
+<header class="bg-dark text-white py-2">
     <div class="container d-flex justify-content-between align-items-center">
-        <h1 class="h3 mb-0">Asistente Legislativo</h1>
 
-        <nav class="d-flex align-items-center">
-<?php if ($auth): ?>
-
-    <div class="bg-white rounded-4 shadow-sm px-3 py-2 d-flex align-items-center gap-2"
-         style="box-shadow: 0 6px 18px rgba(0,0,0,.25);">
-
-        <!-- Botones -->
-        <a href="index.php?ruta=proceso/formulario"
-           class="btn btn-sm btn-outline-dark fw-semibold">
-            Transcribir
+        <!-- Logo -->
+        <a href="index.php?ruta=proceso/formulario" class="text-white text-decoration-none d-flex align-items-center gap-2">
+            <span style="font-size:1.6rem;line-height:1;">⚖</span>
+            <div>
+                <div style="font-size:1.15rem;font-weight:900;letter-spacing:.08em;line-height:1.1;font-family:'Lato',sans-serif;">ALCEY</div>
+                <div style="font-size:.58rem;color:#9ca3af;letter-spacing:.1em;text-transform:uppercase;font-weight:400;font-family:'Lato',sans-serif;">Asistente Legislativo</div>
+            </div>
         </a>
 
-        <a href="index.php?ruta=audio/lista"
-           class="btn btn-sm btn-outline-dark fw-semibold">
-            Lista de Audios
-        </a>
+        <!-- Nav -->
+        <?php if ($auth): ?>
+        <div class="nav-card">
 
-        <a href="index.php?ruta=transcripcion/lista"
-           class="btn btn-sm btn-outline-dark fw-semibold">
-            Transcripciones
-        </a>
+            <a href="index.php?ruta=proceso/formulario"
+               class="nav-btn <?= strpos($ruta_actual,'proceso') === 0 ? 'active' : '' ?>">
+                Transcribir
+            </a>
+            <?php if (($auth['iTipo'] ?? 0) == 1): ?>
+            <a href="index.php?ruta=audio/lista"
+               class="nav-btn <?= strpos($ruta_actual,'audio') === 0 ? 'active' : '' ?>">
+                Audios
+            </a>
+            <?php endif; ?>
 
-        <!-- Separador -->
-        <div class="vr mx-2"></div>
+            <a href="index.php?ruta=transcripcion/lista"
+               class="nav-btn <?= strpos($ruta_actual,'transcripcion') === 0 ? 'active' : '' ?>">
+                Transcripciones
+            </a>
 
-        <!-- Usuario -->
-        <span class="badge bg-light text-dark border fw-semibold px-3 py-2"
-              style="box-shadow: inset 0 0 4px rgba(0,0,0,.15);">
-            <?= htmlspecialchars($auth['cNombre']) ?>
-        </span>
+            <?php if (($auth['iTipo'] ?? 0) == 1): ?>
+            <div class="dropdown">
+                <button class="nav-btn <?= strpos($ruta_actual,'catalogo') === 0 ? 'active' : '' ?>"
+                        type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    Catálogos <span style="font-size:.65rem;opacity:.7;">▾</span>
+                </button>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="index.php?ruta=catalogo/tiposSesion">Tipos de Sesión</a></li>
+                    <li><a class="dropdown-item" href="index.php?ruta=catalogo/sesiones">Sesiones</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="index.php?ruta=catalogo/legislaturas">Legislaturas</a></li>
+                    <li><a class="dropdown-item" href="index.php?ruta=catalogo/diputados">Diputados</a></li>
+                    <li><a class="dropdown-item" href="index.php?ruta=catalogo/partidos">Partidos</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="index.php?ruta=catalogo/usuarios">Usuarios</a></li>
+                </ul>
+            </div>
+            <?php endif; ?>
 
-        <!-- Cerrar sesión -->
-        <a href="index.php?ruta=auth/logout"
-           class="btn btn-danger btn-sm rounded-circle d-flex align-items-center justify-content-center"
-           style="width:34px;height:34px;"
-           title="Cerrar sesión">
-            ✕
-        </a>
+            <div class="nav-sep"></div>
 
-    </div>
+            <span class="nav-user">
+                <?= htmlspecialchars($auth['cNombre']) ?>
+            </span>
 
-<?php endif; ?>
-</nav>
+            <a href="index.php?ruta=auth/logout" class="nav-logout" title="Cerrar sesión">✕</a>
+
+        </div>
+        <?php endif; ?>
 
     </div>
 </header>
+
 <main class="container">
     <?php include_once($view); ?>
 </main>
 
-<footer class="mt-auto bg-dark text-white text-center p-3">
+<footer class="site-footer">
     <div class="container">
-        ALCEY V1.0 - <?= date('Y'); ?>
+        ALCEY V1.0 &nbsp;·&nbsp; <?= date('Y') ?>
     </div>
 </footer>
 

@@ -52,6 +52,50 @@ if ($idTrans > 0) {
 // ==== Fin detecciones ====
 ?>
 
+<style>
+.btn-guardar {
+    background: linear-gradient(135deg, #dc2626, #b91c1c);
+    color:#fff; border:none; padding:.55rem 1.4rem;
+    border-radius:8px; font-weight:700; font-size:.9rem;
+    box-shadow:0 3px 10px rgba(220,38,38,.35); cursor:pointer;
+    transition:opacity .15s; font-family:'Lato',sans-serif; text-decoration:none; display:inline-flex; align-items:center;
+}
+.btn-guardar:hover { opacity:.88; color:#fff; }
+
+.btn-revisar {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    color:#fff; border:none; padding:.55rem 1.4rem;
+    border-radius:8px; font-weight:700; font-size:.9rem;
+    box-shadow:0 3px 10px rgba(37,99,235,.35); cursor:pointer;
+    transition:opacity .15s; font-family:'Lato',sans-serif; text-decoration:none; display:inline-flex; align-items:center;
+}
+.btn-revisar:hover { opacity:.88; color:#fff; }
+
+.btn-generar-acta {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color:#fff; border:none; padding:.55rem 1.4rem;
+    border-radius:8px; font-weight:700; font-size:.9rem;
+    box-shadow:0 3px 10px rgba(245,158,11,.35); cursor:pointer;
+    transition:opacity .15s; font-family:'Lato',sans-serif; text-decoration:none; display:inline-flex; align-items:center;
+}
+.btn-generar-acta:hover:not(.disabled) { opacity:.88; color:#fff; }
+.btn-generar-acta.disabled { opacity:.45; pointer-events:none; color:#fff; }
+
+.btn-cancelar {
+    background:#fff; color:#374151; border:2px solid #d1d5db;
+    padding:.48rem 1.2rem; border-radius:8px;
+    font-weight:600; font-size:.9rem;
+    transition:border-color .15s,background .15s,color .15s;
+    font-family:'Lato',sans-serif; text-decoration:none; display:inline-flex; align-items:center;
+}
+.btn-cancelar:hover { border-color:#6b7280; background:#f9fafb; color:#111827; }
+
+/* Lato for all form inputs in this view */
+.form-control, .form-select, textarea.form-control {
+    font-family: 'Lato', sans-serif !important;
+}
+</style>
+
 <div class="table-container card-style mb-4">
     <div class="card-header-title">Editar Transcripción</div>
     <div class="table-responsive" style="overflow-x: hidden;">
@@ -146,33 +190,34 @@ if ($idTrans > 0) {
             </div>
 
             <!-- Botones -->
-            <button type="submit" onclick="this.form.submit();" class="btn btn-danger">Guardar Cambios</button>
+            <div class="d-flex flex-wrap gap-2 mt-2">
+                <button type="submit" onclick="this.form.submit();" class="btn-guardar">Guardar Cambios</button>
 
-            <a class="btn btn-info"
-               href="index.php?ruta=correccion/iniciar&id=<?= intval($transcripcion['iIdTrans']) ?>">
-                Revisar ortografía
-            </a>
-
-            <?php
-            $hrefActaNueva = "index.php?ruta=actanueva/iniciar&id=" . intval($transcripcion['iIdTrans']);
-            ?>
-
-            <?php if ($tieneCorreccion): ?>
-                <a href="<?= $hrefActaNueva ?>" class="btn btn-info">
-                    📝 Generar Acta (nuevo flujo)
+                <a class="btn-revisar"
+                   href="index.php?ruta=correccion/iniciar&id=<?= intval($transcripcion['iIdTrans']) ?>">
+                    Revisar ortografía
                 </a>
-            <?php else: ?>
-                <a href="#"
-                   class="btn btn-info disabled"
-                   aria-disabled="true"
-                   title="Primero realiza la revisión ortográfica para habilitar este botón."
-                   onclick="return false;"
-                   style="pointer-events: none; opacity: .65;">
-                    📝 Generar Acta (nuevo flujo)
-                </a>
-            <?php endif; ?>
 
-            <a href="index.php?ruta=transcripcion/lista" class="btn btn-secondary ms-2">Cancelar</a>
+                <?php
+                $hrefActaNueva = "index.php?ruta=actanueva/iniciar&id=" . intval($transcripcion['iIdTrans']);
+                ?>
+
+                <?php if ($tieneCorreccion): ?>
+                    <a href="<?= $hrefActaNueva ?>" class="btn-generar-acta">
+                        📝 Generar Acta (nuevo flujo)
+                    </a>
+                <?php else: ?>
+                    <a href="#"
+                       class="btn-generar-acta disabled"
+                       aria-disabled="true"
+                       title="Primero realiza la revisión ortográfica para habilitar este botón."
+                       onclick="return false;">
+                        📝 Generar Acta (nuevo flujo)
+                    </a>
+                <?php endif; ?>
+
+                <a href="index.php?ruta=transcripcion/lista" class="btn-cancelar">Cancelar</a>
+            </div>
 
         </form>
 

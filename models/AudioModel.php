@@ -46,11 +46,7 @@ public function obtenerTodosConTranscripciones() {
         $res = $this->conn->query($query);
         $audio['transcripciones'] = $res ? $res->fetch_all(MYSQLI_ASSOC) : [];
 
-        // Verificar si ya tiene diarización
-        $diarizaQuery = "SELECT COUNT(*) as total FROM diarizaciones 
-                         WHERE iIdAudio = $id AND iStatus = 1";
-        $r = $this->conn->query($diarizaQuery)->fetch_assoc();
-        $audio['diarizado'] = ($r && $r['total'] > 0);
+        $audio['diarizado'] = false;
     }
 
     return $audios;

@@ -10,7 +10,16 @@ class AudioController {
         $this->modelo = new AudioModel();
     }
 
+    private function requireAdmin(): void {
+        if (session_status() === PHP_SESSION_NONE) session_start();
+        if ((int)($_SESSION['auth']['iTipo'] ?? 0) !== 1) {
+            http_response_code(403);
+            exit('<p style="font-family:sans-serif;padding:2rem;color:#c00">Acceso denegado. Solo administradores pueden ver esta sección.</p>');
+        }
+    }
+
     public function lista() {
+        $this->requireAdmin();
         $audios = $this->modelo->obtenerTodosConTranscripciones();
 
         // Obtener modelos activos
@@ -22,6 +31,7 @@ class AudioController {
     }
 
     public function descargar() {
+        $this->requireAdmin();
         $id = $_GET['id'] ?? null;
         if (!$id) exit('ID no proporcionado');
 
@@ -37,6 +47,7 @@ class AudioController {
     }
 
 public function detalle() {
+    $this->requireAdmin();
     $idAudio = $_GET['idAudio'] ?? null;
     if (!$idAudio) {
         echo "ID de audio no proporcionado.";

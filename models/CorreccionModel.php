@@ -80,13 +80,41 @@ class CorreccionModel {
     //     OBTENER TIPOS DE SESIÓN ACTIVOS
     // ===========================================================
     public function obtenerTiposSesionActivos() {
-        $sql = "SELECT iIdCatTipoSesiones, cCatTipoSesiones
-                FROM cattiposesesiones
-                WHERE iStatusCatTipoSesiones = 1
-                ORDER BY iOrder ASC, cCatTipoSesiones ASC";
-
-        $res = $this->conn->query($sql);
+        try {
+            $sql = "SELECT iIdCatTipoSesiones, cCatTipoSesiones,
+                           IFNULL(cModalidadSesion, 'pleno') AS cModalidadSesion
+                    FROM cattiposesesiones
+                    WHERE iStatusCatTipoSesiones = 1
+                    ORDER BY iOrder ASC, cCatTipoSesiones ASC";
+            $res = $this->conn->query($sql);
+        } catch (\mysqli_sql_exception $e) {
+            $sql = "SELECT iIdCatTipoSesiones, cCatTipoSesiones,
+                           'pleno' AS cModalidadSesion
+                    FROM cattiposesesiones
+                    WHERE iStatusCatTipoSesiones = 1
+                    ORDER BY iOrder ASC, cCatTipoSesiones ASC";
+            $res = $this->conn->query($sql);
+        }
         return $res ? $res->fetch_all(MYSQLI_ASSOC) : [];
+    }
+
+    // ===========================================================
+    //     OBTENER MODALIDAD DE UN TIPO DE SESIÓN
+    // ===========================================================
+    public function obtenerModalidadTipo(int $idTipo): string {
+        try {
+            $sql = "SELECT IFNULL(cModalidadSesion, 'pleno') AS cModalidadSesion
+                    FROM cattiposesesiones WHERE iIdCatTipoSesiones = ? LIMIT 1";
+            $stmt = $this->conn->prepare($sql);
+            if (!$stmt) return 'pleno';
+            $stmt->bind_param("i", $idTipo);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            $row = $res ? $res->fetch_assoc() : null;
+            return $row['cModalidadSesion'] ?? 'pleno';
+        } catch (\mysqli_sql_exception $e) {
+            return 'pleno';
+        }
     }
 
     // ===========================================================
