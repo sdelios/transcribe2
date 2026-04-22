@@ -1066,12 +1066,16 @@ class ActanuevaController
             $rPr = $m[0];
         }
 
-        // Construir XML: un <w:p> por cada párrafo del texto
+        // Construir XML: un <w:p> por cada párrafo + párrafo vacío de separación
         $parrafos = preg_split('/\n{2,}/', trim($texto));
         $parrafos = array_values(array_filter(array_map('trim', $parrafos)));
 
+        // Párrafo vacío que actúa como línea en blanco entre párrafos
+        $parrafoVacio = '<w:p>' . $pPr . '</w:p>';
+
         $newXml = '';
-        foreach ($parrafos as $p) {
+        $total  = count($parrafos);
+        foreach ($parrafos as $idx => $p) {
             $lines  = explode("\n", $p);
             $runXml = '';
             foreach ($lines as $i => $linea) {
@@ -1079,6 +1083,10 @@ class ActanuevaController
                 $runXml .= '<w:t xml:space="preserve">' . htmlspecialchars($linea, ENT_XML1) . '</w:t>';
             }
             $newXml .= '<w:p>' . $pPr . '<w:r>' . $rPr . $runXml . '</w:r></w:p>';
+            // Línea en blanco después de cada párrafo excepto el último
+            if ($idx < $total - 1) {
+                $newXml .= $parrafoVacio;
+            }
         }
 
         $docXml = substr($docXml, 0, $startPos) . $newXml . substr($docXml, $endPos);
