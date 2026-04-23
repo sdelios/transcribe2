@@ -120,4 +120,28 @@ class CatalogoModel {
     public function getLastError(): string {
         return $this->conn->error ?: '';
     }
+
+    // ================================================================
+    //  CONFIGURACIÓN GLOBAL
+    // ================================================================
+
+    public function obtenerConfig(string $clave): ?string {
+        $stmt = $this->conn->prepare("SELECT valor FROM config WHERE clave = ? LIMIT 1");
+        $stmt->bind_param("s", $clave);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        if ($res && $res->num_rows > 0) {
+            return $res->fetch_assoc()['valor'];
+        }
+        return null;
+    }
+
+    public function guardarConfig(string $clave, string $valor): bool {
+        $stmt = $this->conn->prepare(
+            "INSERT INTO config (clave, valor) VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE valor = VALUES(valor)"
+        );
+        $stmt->bind_param("ss", $clave, $valor);
+        return $stmt->execute();
+    }
 }

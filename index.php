@@ -53,8 +53,27 @@ if (!$esAuth && empty($_SESSION['auth'])) {
  */
 $controlador = ucfirst($ctrlBase) . 'Controller';
 
-// Ruta del archivo del controlador
+// Switch de proveedor API para actanueva y correccion
+// Los archivos _OpenAI contienen la misma clase, solo cambia el archivo a cargar
 $archivoControlador = __DIR__ . '/controllers/' . $controlador . '.php';
+
+if (in_array($ctrlBase, ['actanueva', 'correccion'])) {
+    try {
+        $cfgConn = new mysqli("localhost", "root", "", "transcriptor");
+        $cfgConn->set_charset("utf8mb4");
+        $cfgRow = $cfgConn->query("SELECT valor FROM config WHERE clave = 'api_proveedor' LIMIT 1");
+        $apiProveedor = ($cfgRow && $cfgRow->num_rows > 0) ? $cfgRow->fetch_assoc()['valor'] : 'claude';
+        $cfgConn->close();
+    } catch (\Throwable $e) {
+        $apiProveedor = 'claude';
+    }
+    if ($apiProveedor === 'openai') {
+        $archivoOpenAI = __DIR__ . '/controllers/' . $controlador . '_OpenAI.php';
+        if (file_exists($archivoOpenAI)) {
+            $archivoControlador = $archivoOpenAI;
+        }
+    }
+}
 
 // Validamos que exista el archivo
 if (!file_exists($archivoControlador)) {

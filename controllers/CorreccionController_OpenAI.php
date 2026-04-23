@@ -231,6 +231,7 @@ class CorreccionController
     // ============================================================
     public function procesar() {
 
+        set_time_limit(300);
         $this->ensureSession();
         header('Content-Type: application/json; charset=utf-8');
 
@@ -402,15 +403,10 @@ $diputadosLista
    • En la lista de asistencia, incluye un apartado de INASISTENCIAS SOLO si la modalidad es 'pleno' y la lista fue proporcionada.
 
 4) NO resumas, NO omitas nada, NO combines párrafos.
-5) Si una palabra no se entiende: «[sic: texto]».
+5) Solo usa «[sic: texto]» cuando una secuencia sea genuinamente incomprensible e imposible de deducir incluso con contexto. Nunca uses sic para palabras que simplemente tienen acento incorrecto, están mal separadas o son nombres propios conocidos.
 6) No inventes información.
-7) Devuelve solo el texto taquigráfico corregido, sin comentarios.
+7) Devuelve ÚNICAMENTE el texto taquigráfico corregido, sin comentarios, sin marcadores de fragmento, sin encabezados propios.
 8) Inicia cada intervención con la palabra DIPUTADO o DIPUTADA según el caso.
-9) Marca los límites entre fragmentos usando las palabras REALES del texto que procesas:
-   - Si NO es el primer fragmento: primera línea → (INICIA: '[primeras 5-6 palabras del fragmento]')
-   - Si NO es el último fragmento: última línea → (CONTINUARA: '[últimas 5-6 palabras del fragmento]')
-   Ejemplo: (CONTINUARA: 'señaló que la propuesta debería')  /  (INICIA: 'propuesta debería someterse a votación')
-   Las palabras citadas deben ser texto real del fragmento para facilitar identificar la unión.
 
 Fragmento:
 $parte
@@ -427,8 +423,9 @@ $parte
             $ch = curl_init("https://api.openai.com/v1/chat/completions");
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_POST => true,
-                CURLOPT_HTTPHEADER => [
+                CURLOPT_POST           => true,
+                CURLOPT_TIMEOUT        => 120,
+                CURLOPT_HTTPHEADER     => [
                     "Authorization: Bearer $apiKey",
                     "Content-Type: application/json"
                 ],
@@ -450,6 +447,7 @@ $parte
             $resultado .= ($json['choices'][0]['message']['content'] ?? '') . "\n";
         }
 
+        $resultado  = $this->limpiarMarcas($resultado);
         $charsNuevo = mb_strlen($resultado);
 
         if (!empty($idCorreccion)) {
@@ -619,10 +617,9 @@ $parte
             if (mb_strlen($cand, 'UTF-8') > $maxLen) {
                 if ($buffer !== '') {
                     $salida[] = trim($buffer);
-                    $prefijo  = $hablante ? "[CONTINÚA: $hablante]\n" : "[CONTINÚA]\n";
-                    $buffer   = $prefijo . $p;
+                    $buffer   = $p;
                 } else {
-                    foreach ($this->corteDuroConTraslape($p, $maxLen, 200) as $x) {
+                    foreach ($this->corteDuroConTraslape($p, $maxLen, 0) as $x) {
                         $salida[] = trim($x);
                     }
                 }
@@ -657,7 +654,7 @@ $parte
             }
 
             $salida[] = $chunk;
-            $i += max(1, mb_strlen($chunk, 'UTF-8') - $overlap);
+            $i += max(1, mb_strlen($chunk, 'UTF-8'));
         }
         return $salida;
     }

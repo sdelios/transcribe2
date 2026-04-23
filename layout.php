@@ -63,11 +63,41 @@ $ruta_actual = $_GET['ruta'] ?? '';
                     <li><a class="dropdown-item" href="index.php?ruta=catalogo/partidos">Partidos</a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item" href="index.php?ruta=catalogo/usuarios">Usuarios</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="index.php?ruta=catalogo/configuracion">⚙ Configuración</a></li>
                 </ul>
             </div>
             <?php endif; ?>
 
             <div class="nav-sep"></div>
+
+            <?php
+            // Icono de API activa (cache en sesión para evitar query en cada carga)
+            if (!isset($_SESSION['api_proveedor_nav'])) {
+                try {
+                    $cfgN = new mysqli("localhost","root","","transcriptor");
+                    $cfgN->set_charset("utf8mb4");
+                    $r = $cfgN->query("SELECT valor FROM config WHERE clave='api_proveedor' LIMIT 1");
+                    $_SESSION['api_proveedor_nav'] = ($r && $r->num_rows > 0) ? $r->fetch_assoc()['valor'] : 'claude';
+                    $cfgN->close();
+                } catch (\Throwable $e) { $_SESSION['api_proveedor_nav'] = 'claude'; }
+            }
+            $navApi = $_SESSION['api_proveedor_nav'];
+            ?>
+            <a href="index.php?ruta=catalogo/configuracion" title="API activa: <?= $navApi === 'openai' ? 'OpenAI' : 'Claude' ?>"
+               style="display:flex;align-items:center;text-decoration:none;opacity:.9;">
+            <?php if ($navApi === 'openai'): ?>
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="11" cy="11" r="11" fill="#000"/>
+                <path d="M15.5 8.27a3.38 3.38 0 0 0-.23-1.27 3.5 3.5 0 0 0-6.05-.74A3.38 3.38 0 0 0 6.5 8.1a3.5 3.5 0 0 0 .47 6.63 3.38 3.38 0 0 0 .89 1.17 3.5 3.5 0 0 0 5.87-1.31A3.5 3.5 0 0 0 15.5 8.27z" fill="white" opacity=".9"/>
+              </svg>
+            <?php else: ?>
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="11" cy="11" r="11" fill="#d97757"/>
+                <path d="M11 5.5 L14.5 14.5 L12.8 14.5 L11.9 12.1 L10.1 12.1 L9.2 14.5 L7.5 14.5 Z M11 8.2 L10.6 11 L11.4 11 Z" fill="white"/>
+              </svg>
+            <?php endif; ?>
+            </a>
 
             <span class="nav-user">
                 <?= htmlspecialchars($auth['cNombre']) ?>
