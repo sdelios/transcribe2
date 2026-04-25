@@ -309,6 +309,15 @@ if (!empty($meta['jAsistentes'])) {
 
 $metaGuardada = $metaGuardada ?? false;
 $metaToken    = $metaToken ?? '';
+
+// Bloqueo de campos: si viene con valor de BD → no se puede editar
+$lockTipo   = ($metadatosSesion !== null) && !empty($meta['iIdCatTipoSesiones']);
+$lockSesion = ($metadatosSesion !== null) && !empty($meta['iIdCatSesion']);
+$lockFecha  = ($metadatosSesion !== null) && !empty($meta['dFechaSesion']);
+$lockPres   = ($metadatosSesion !== null) && !empty($meta['iIdPresidente']);
+$lockVP     = ($metadatosSesion !== null) && !empty($meta['iIdVicepresidente']);
+$lockSec1   = ($metadatosSesion !== null) && !empty($meta['iIdSecretario1']);
+$lockSec2   = ($metadatosSesion !== null) && !empty($meta['iIdSecretario2']);
 ?>
 
 <div class="table-container card-style mb-4">
@@ -332,8 +341,8 @@ $metaToken    = $metaToken ?? '';
                     <!-- Fila: tipo + sesión + fecha -->
                     <div class="row g-3 mb-3">
                         <div class="col-md-4">
-                            <label class="meta-label">Tipo de sesión</label>
-                            <select id="iIdCatTipoSesiones" class="form-select form-select-sm">
+                            <label class="meta-label">Tipo de sesión <?= $lockTipo ? '🔒' : '' ?></label>
+                            <select id="iIdCatTipoSesiones" class="form-select form-select-sm" <?= $lockTipo ? 'disabled title="Valor registrado en BD"' : '' ?>>
                                 <option value="">— Selecciona —</option>
                                 <?php foreach($tiposSesion as $t): ?>
                                     <option value="<?= (int)$t['iIdCatTipoSesiones'] ?>" <?= ((string)$tipoSel === (string)$t['iIdCatTipoSesiones']) ? 'selected' : '' ?>>
@@ -344,8 +353,8 @@ $metaToken    = $metaToken ?? '';
                         </div>
 
                         <div class="col-md-5">
-                            <label class="meta-label">Sesión (filtrada por tipo)</label>
-                            <select id="iIdCatSesion" class="form-select form-select-sm">
+                            <label class="meta-label">Sesión (filtrada por tipo) <?= $lockSesion ? '🔒' : '' ?></label>
+                            <select id="iIdCatSesion" class="form-select form-select-sm" <?= $lockSesion ? 'disabled title="Valor registrado en BD"' : '' ?>>
                                 <option value="">— Selecciona —</option>
                                 <?php foreach($sesionesIniciales as $s): ?>
                                     <option value="<?= (int)$s['iIdCatSesion'] ?>" <?= ((string)$sesionSel === (string)$s['iIdCatSesion']) ? 'selected' : '' ?>>
@@ -356,9 +365,10 @@ $metaToken    = $metaToken ?? '';
                         </div>
 
                         <div class="col-md-3">
-                            <label class="meta-label">Fecha de sesión</label>
+                            <label class="meta-label">Fecha de sesión <?= $lockFecha ? '🔒' : '' ?></label>
                             <input type="date" id="dFechaSesion" class="form-control form-control-sm"
-                                   value="<?= htmlspecialchars($fechaSel) ?>">
+                                   value="<?= htmlspecialchars($fechaSel) ?>"
+                                   <?= $lockFecha ? 'disabled title="Valor registrado en BD"' : '' ?>>
                         </div>
                     </div>
 
@@ -371,8 +381,8 @@ $metaToken    = $metaToken ?? '';
                             <div class="row g-3">
 
                                 <div class="col-md-4">
-                                    <label class="meta-label">Presidente</label>
-                                    <select id="iIdPresidente" class="form-select form-select-sm">
+                                    <label class="meta-label">Presidente <?= $lockPres ? '🔒' : '' ?></label>
+                                    <select id="iIdPresidente" class="form-select form-select-sm" <?= $lockPres ? 'disabled title="Valor registrado en BD"' : '' ?>>
                                         <option value="">— Selecciona —</option>
                                         <?php foreach($diputadosDB as $d): ?>
                                             <option value="<?= (int)$d['iIdUsuario'] ?>" <?= ((string)$presSel === (string)$d['iIdUsuario']) ? 'selected' : '' ?>>
@@ -383,8 +393,8 @@ $metaToken    = $metaToken ?? '';
                                 </div>
 
                                 <div class="col-md-4">
-                                    <label class="meta-label">Secretario 1</label>
-                                    <select id="iIdSecretario1" class="form-select form-select-sm">
+                                    <label class="meta-label">Secretario 1 <?= $lockSec1 ? '🔒' : '' ?></label>
+                                    <select id="iIdSecretario1" class="form-select form-select-sm" <?= $lockSec1 ? 'disabled title="Valor registrado en BD"' : '' ?>>
                                         <option value="">— Selecciona —</option>
                                         <?php foreach($diputadosDB as $d): ?>
                                             <option value="<?= (int)$d['iIdUsuario'] ?>" <?= ((string)$sec1Sel === (string)$d['iIdUsuario']) ? 'selected' : '' ?>>
@@ -395,8 +405,8 @@ $metaToken    = $metaToken ?? '';
                                 </div>
 
                                 <div class="col-md-4">
-                                    <label class="meta-label">Secretario 2</label>
-                                    <select id="iIdSecretario2" class="form-select form-select-sm">
+                                    <label class="meta-label">Secretario 2 <?= $lockSec2 ? '🔒' : '' ?></label>
+                                    <select id="iIdSecretario2" class="form-select form-select-sm" <?= $lockSec2 ? 'disabled title="Valor registrado en BD"' : '' ?>>
                                         <option value="">— Selecciona —</option>
                                         <?php foreach($diputadosDB as $d): ?>
                                             <option value="<?= (int)$d['iIdUsuario'] ?>" <?= ((string)$sec2Sel === (string)$d['iIdUsuario']) ? 'selected' : '' ?>>
@@ -407,8 +417,8 @@ $metaToken    = $metaToken ?? '';
                                 </div>
 
                                 <div class="col-md-4" id="vpCol" style="display:none">
-                                    <label class="meta-label">Vicepresidente</label>
-                                    <select id="iIdVicepresidente" class="form-select form-select-sm">
+                                    <label class="meta-label">Vicepresidente <?= $lockVP ? '🔒' : '' ?></label>
+                                    <select id="iIdVicepresidente" class="form-select form-select-sm" <?= $lockVP ? 'disabled title="Valor registrado en BD"' : '' ?>>
                                         <option value="">— Selecciona —</option>
                                         <?php foreach($diputadosDB as $d): ?>
                                             <option value="<?= (int)$d['iIdUsuario'] ?>" <?= ((string)$vpSel === (string)$d['iIdUsuario']) ? 'selected' : '' ?>>
@@ -619,7 +629,7 @@ $metaToken    = $metaToken ?? '';
         const esPleno = mod === 'pleno';
 
         vpCol.style.display = esPleno ? 'none' : '';
-        if (esPleno && selVP) selVP.value = '';
+        if (esPleno && selVP && !selVP.disabled) selVP.value = '';
 
         if (esPleno) {
             inasToggleWrap.style.display = 'none';

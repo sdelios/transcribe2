@@ -12,35 +12,36 @@ $charsActa   = $tieneActa ? ($acta['chars_acta'] ?? 0) : 0;
 $textoSintesis   = $tieneActa ? ($acta['texto_sintesis'] ?? '') : '';
 $charsSintesis   = $tieneActa ? ($acta['chars_sintesis'] ?? 0) : 0;
 
-// =====================================================
-// ✅ NUEVO: Defaults de mesa directiva desde:
-// - acta_metadata (si existe)
-// - si no existe, sesion_metadatos ligado a corrección
-// =====================================================
 $metaActa   = $metaActa   ?? null;
 $metaSesion = $metaSesion ?? null;
+$legislaturas  = $legislaturas  ?? [];
+$cat_periodo   = $cat_periodo   ?? [];
+$cat_ejercicio = $cat_ejercicio ?? [];
 
-// Defaults desde acta_metadata (si existe)
-$selPres = $metaActa['presidente']    ?? '';
-$selS1   = $metaActa['secretaria_1']  ?? '';
+// Defaults de mesa directiva: prioriza acta_metadata, fallback a sesion_metadatos
+$selPres = $metaActa['presidente']    ?? ($metaSesion['iIdPresidente']  ?? '');
+$selS1   = $metaActa['secretaria_1']  ?? ($metaSesion['iIdSecretario1'] ?? '');
 $selS2   = $metaActa['secretaria_2']  ?? '';
 
-// Si NO hay metaActa, usa metadatos de sesión por corrección
-if (!$metaActa) {
-  $selPres = $metaSesion['iIdPresidente']  ?? $selPres;
-  $selS1   = $metaSesion['iIdSecretario1'] ?? $selS1;
-  $selS2   = $metaSesion['iIdSecretario2'] ?? $selS2;
-}
+// Defaults de catálogos para el modal
+$selLeg  = $metaActa['id_legislatura'] ?? ($legActiva['id'] ?? '');
+$selPer  = $metaActa['id_periodo']     ?? '';
+$selEj   = $metaActa['id_ejercicio']   ?? '';
 
-// (Opcional) fecha default desde metaSesion si lo quieres usar en el modal
-$defaultFechaSesion = $metaSesion['dFechaSesion'] ?? '';
+// Tipo y sesión (read-only, vienen de sesion_metadatos via join)
+$tipoSesionNombre = $metaActa['tipo_sesion_nombre'] ?? ($metaSesion['cCatTipoSesiones'] ?? '');
+$sesionNombre     = $metaActa['sesion_nombre_cat']  ?? ($metaSesion['cNombreCatSesion'] ?? '');
 
-// Defaults PHP -> JS para precargar el modal cuando NO hay acta_metadata aún
+// Boot para JS
 $metaDefaults = [
-  'presidente'   => (string)$selPres,
-  'secretaria_1' => (string)$selS1,
-  'secretaria_2' => (string)$selS2,
-  // 'fecha' => (string)$defaultFechaSesion, // si quieres precargar fecha
+  'presidente'     => (string)$selPres,
+  'secretaria_1'   => (string)$selS1,
+  'secretaria_2'   => (string)$selS2,
+  'id_legislatura' => (string)$selLeg,
+  'id_periodo'     => (string)$selPer,
+  'id_ejercicio'   => (string)$selEj,
+  'tipo_sesion_ro' => $tipoSesionNombre,
+  'sesion_ro'      => $sesionNombre,
 ];
 ?>
 
@@ -335,13 +336,17 @@ $metaDefaults = [
             </div>
             <div class="col-md-4">
               <label class="form-label modal-label">Tipo de sesión</label>
-              <select class="form-select modal-input" id="m_tipo_sesion">
-                <?php foreach ($tiposSesion as $ts): ?>
-                <option value="<?= htmlspecialchars($ts['cCatTipoSesiones']) ?>">
-                  <?= htmlspecialchars($ts['cCatTipoSesiones']) ?>
-                </option>
-                <?php endforeach; ?>
-              </select>
+              <div class="form-control modal-input modal-readonly bg-light" id="m_tipo_sesion_ro"
+                   style="color:#495057;">
+                <?= htmlspecialchars($tipoSesionNombre ?: '—') ?>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label modal-label">Sesión</label>
+              <div class="form-control modal-input modal-readonly bg-light" id="m_sesion_ro"
+                   style="color:#495057;">
+                <?= htmlspecialchars($sesionNombre ?: '—') ?>
+              </div>
             </div>
           </div>
         </div>
@@ -350,33 +355,40 @@ $metaDefaults = [
         <div class="modal-section">
           <div class="modal-section-title">Legislatura</div>
           <div class="row g-3">
-            <div class="col-md-3">
-              <label class="form-label modal-label">Clave</label>
-              <input type="text" class="form-control modal-input modal-readonly"
-                     id="m_legislatura"
-                     value="<?= htmlspecialchars($legActiva['clave'] ?? '') ?>"
-                     readonly>
-            </div>
-            <div class="col-md-9">
-              <label class="form-label modal-label">Nombre completo</label>
-              <input type="text" class="form-control modal-input modal-readonly"
-                     id="m_legislatura_texto"
-                     value="<?= htmlspecialchars($legActiva['nombre'] ?? '') ?>"
-                     readonly>
+            <div class="col-md-12">
+              <label class="form-label modal-label">Legislatura</label>
+              <select class="form-select modal-input" id="m_legislatura">
+                <option value="">— Selecciona —</option>
+                <?php foreach ($legislaturas as $leg): ?>
+                <option value="<?= (int)$leg['id'] ?>"
+                  <?= ((string)$selLeg === (string)$leg['id']) ? 'selected' : '' ?>>
+                  <?= htmlspecialchars($leg['clave'] . ' — ' . $leg['nombre']) ?>
+                </option>
+                <?php endforeach; ?>
+              </select>
             </div>
             <div class="col-md-6">
               <label class="form-label modal-label">Periodo</label>
               <select class="form-select modal-input" id="m_periodo">
-                <option value="Primer Periodo Ordinario de Sesiones">Primer Periodo Ordinario de Sesiones</option>
-                <option value="Segundo Periodo Ordinario de Sesiones">Segundo Periodo Ordinario de Sesiones</option>
+                <option value="">— Selecciona —</option>
+                <?php foreach ($cat_periodo as $p): ?>
+                <option value="<?= (int)$p['id'] ?>"
+                  <?= ((string)$selPer === (string)$p['id']) ? 'selected' : '' ?>>
+                  <?= htmlspecialchars($p['nombre']) ?>
+                </option>
+                <?php endforeach; ?>
               </select>
             </div>
             <div class="col-md-6">
               <label class="form-label modal-label">Ejercicio constitucional</label>
               <select class="form-select modal-input" id="m_ejercicio">
-                <option value="Primer Año de Ejercicio Constitucional">Primer Año de Ejercicio Constitucional</option>
-                <option value="Segundo Año de Ejercicio Constitucional">Segundo Año de Ejercicio Constitucional</option>
-                <option value="Tercer Año de Ejercicio Constitucional">Tercer Año de Ejercicio Constitucional</option>
+                <option value="">— Selecciona —</option>
+                <?php foreach ($cat_ejercicio as $e): ?>
+                <option value="<?= (int)$e['id'] ?>"
+                  <?= ((string)$selEj === (string)$e['id']) ? 'selected' : '' ?>>
+                  <?= htmlspecialchars($e['nombre']) ?>
+                </option>
+                <?php endforeach; ?>
               </select>
             </div>
           </div>
@@ -471,4 +483,4 @@ $metaDefaults = [
   };
 </script>
 
-<script src="public/js/acta_nueva/iniciar.js?v=1"></script>
+<script src="public/js/acta_nueva/iniciar.js?v=<?= time() ?>"></script>

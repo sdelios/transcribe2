@@ -742,17 +742,38 @@ $diputadosLista
         }
 
         $texto = $_POST['texto'];
-        $id = intval($_POST['id']);
+        $id    = intval($_POST['id']);
 
         require_once __DIR__ . "/../vendor/autoload.php";
 
         $phpWord = new \PhpOffice\PhpWord\PhpWord();
-        $section = $phpWord->addSection();
+        $phpWord->setDefaultFontName('Arial');
+        $phpWord->setDefaultFontSize(11);
 
-        $fontStyle = ['name' => 'Arial','size' => 11];
+        $section = $phpWord->addSection([
+            'marginTop'    => 1134,
+            'marginBottom' => 1134,
+            'marginLeft'   => 1800,
+            'marginRight'  => 1800,
+        ]);
 
-        $paragraphs = explode("\n", $texto);
-        foreach ($paragraphs as $p) $section->addText($p, $fontStyle);
+        $fontStyle = ['name' => 'Arial', 'size' => 11];
+        $parStyle  = [
+            'alignment'   => 'both',
+            'lineHeight'  => 1.15,
+            'spaceAfter'  => 0,
+            'spaceBefore' => 0,
+        ];
+        $parVacio  = ['spaceAfter' => 80, 'spaceBefore' => 0];
+
+        $lineas = explode("\n", str_replace(["\r\n", "\r"], "\n", $texto));
+        foreach ($lineas as $linea) {
+            if (trim($linea) === '') {
+                $section->addText('', $fontStyle, $parVacio);
+            } else {
+                $section->addText($linea, $fontStyle, $parStyle);
+            }
+        }
 
         $filename = "Transcripcion_Taquigrafica_ID{$id}.docx";
 

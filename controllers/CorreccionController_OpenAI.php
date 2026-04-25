@@ -275,7 +275,7 @@ class CorreccionController
             return;
         }
 
-        $chunks = $this->chunkTextInteligente($texto, 9000);
+        $chunks = $this->chunkTextInteligente($texto, 13000);
 
         // ✅ usa variable de entorno (no hardcode)
         $apiKey = $_ENV['OPENAI_API_KEY'] ?? null;
@@ -381,7 +381,7 @@ DIPUTADOS INASISTENTES (según presidencia / no marcados como asistentes):
         $idxOpenAI  = 0;
 
         foreach ($chunks as $parte) {
-            if ($idxOpenAI++ > 0) sleep(3);
+            if ($idxOpenAI++ > 0) sleep(1);
 
             $prompt = "
 $contextoSesion
@@ -679,17 +679,39 @@ $parte
         }
 
         $texto = $_POST['texto'];
-        $id = intval($_POST['id']);
+        $id    = intval($_POST['id']);
 
         require_once __DIR__ . "/../vendor/autoload.php";
 
         $phpWord = new \PhpOffice\PhpWord\PhpWord();
-        $section = $phpWord->addSection();
+        $phpWord->setDefaultFontName('Arial');
+        $phpWord->setDefaultFontSize(11);
 
-        $fontStyle = ['name' => 'Arial','size' => 11];
+        // Márgenes estándar (twips: 1 cm ≈ 567, 2.5 cm ≈ 1418, 3 cm ≈ 1701)
+        $section = $phpWord->addSection([
+            'marginTop'    => 1134,  // 2 cm
+            'marginBottom' => 1134,
+            'marginLeft'   => 1800,  // ~3.17 cm
+            'marginRight'  => 1800,
+        ]);
 
-        $paragraphs = explode("\n", $texto);
-        foreach ($paragraphs as $p) $section->addText($p, $fontStyle);
+        $fontStyle = ['name' => 'Arial', 'size' => 11];
+        $parStyle  = [
+            'alignment'   => 'both',  // justificado
+            'lineHeight'  => 1.15,
+            'spaceAfter'  => 0,
+            'spaceBefore' => 0,
+        ];
+        $parVacio  = ['spaceAfter' => 80, 'spaceBefore' => 0]; // línea vacía = separador compacto
+
+        $lineas = explode("\n", str_replace(["\r\n", "\r"], "\n", $texto));
+        foreach ($lineas as $linea) {
+            if (trim($linea) === '') {
+                $section->addText('', $fontStyle, $parVacio);
+            } else {
+                $section->addText($linea, $fontStyle, $parStyle);
+            }
+        }
 
         $filename = "Transcripcion_Taquigrafica_ID{$id}.docx";
 

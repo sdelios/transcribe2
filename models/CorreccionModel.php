@@ -234,5 +234,20 @@ class CorreccionModel {
             'affected_rows' => (int)$stmt->affected_rows
         ];
     }
+
+    public function obtenerLegislaturas(): array {
+        $res = $this->conn->query("SELECT * FROM legislaturas ORDER BY numero DESC");
+        return ($res) ? $res->fetch_all(MYSQLI_ASSOC) : [];
+    }
+
+    public function obtenerCatPeriodo(): array {
+        $res = $this->conn->query("SELECT * FROM cat_periodo ORDER BY orden");
+        return ($res) ? $res->fetch_all(MYSQLI_ASSOC) : [];
+    }
+
+    public function obtenerCatEjercicio(): array {
+        $res = $this->conn->query("SELECT * FROM cat_ejercicio ORDER BY orden");
+        return ($res) ? $res->fetch_all(MYSQLI_ASSOC) : [];
+    }
 }
 

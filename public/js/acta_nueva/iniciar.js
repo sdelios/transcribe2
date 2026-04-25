@@ -223,10 +223,9 @@
           // Metadata completo (acepta variantes)
           const req = [
             ['clave_acta','clave','cClaveActa'],
-            ['tipo_sesion','tipo','cTipoSesion'],
-            ['legislatura','cLegislatura'],
-            ['periodo','cPeriodo'],
-            ['ejercicio','cEjercicio'],
+            ['id_legislatura'],
+            ['id_periodo'],
+            ['id_ejercicio'],
             ['fecha','dFecha'],
             ['hora_inicio','horaInicio','cHoraInicio'],
             ['ciudad','cCiudad'],
@@ -606,22 +605,33 @@
     // =========================
     // ABRIR MODAL METADATA
     // =========================
-    function fillMetaForm(d){
-      document.getElementById('m_clave_acta').value        = d?.clave_acta ?? '';
-      document.getElementById('m_tipo_sesion').value       = d?.tipo_sesion ?? 'Ordinaria';
-      document.getElementById('m_legislatura').value       = d?.legislatura ?? 'LXIV';
-      document.getElementById('m_legislatura_texto').value = d?.legislatura_texto ?? '';
-      document.getElementById('m_periodo').value           = d?.periodo ?? '';
-      document.getElementById('m_ejercicio').value         = d?.ejercicio ?? '';
-      document.getElementById('m_fecha').value             = d?.fecha ?? '';
-      document.getElementById('m_hora_inicio').value       = (d?.hora_inicio ?? '').substring(0,5);
-      document.getElementById('m_ciudad').value            = d?.ciudad ?? 'Mérida';
-      document.getElementById('m_recinto').value           = d?.recinto ?? '';
+    function setVal(id, val) {
+      const el = document.getElementById(id);
+      if (el) el.value = val ?? '';
+    }
 
-      // ✅ mesa directiva
-      document.getElementById('m_presidente').value        = d?.presidente ?? '';
-      document.getElementById('m_secretaria_1').value      = d?.secretaria_1 ?? '';
-      document.getElementById('m_secretaria_2').value      = d?.secretaria_2 ?? '';
+    function fillMetaForm(d){
+      setVal('m_clave_acta',  d?.clave_acta   ?? '');
+      setVal('m_fecha',       d?.fecha         ?? '');
+      setVal('m_hora_inicio', (d?.hora_inicio ?? '').substring(0, 5));
+      setVal('m_ciudad',      d?.ciudad        ?? 'Mérida');
+      setVal('m_recinto',     d?.recinto       ?? '');
+
+      // Catálogos normalizados — valor = ID numérico
+      setVal('m_legislatura', d?.id_legislatura ? String(d.id_legislatura) : (BOOT.metaDefaults?.id_legislatura ?? ''));
+      setVal('m_periodo',     d?.id_periodo     ? String(d.id_periodo)     : (BOOT.metaDefaults?.id_periodo     ?? ''));
+      setVal('m_ejercicio',   d?.id_ejercicio   ? String(d.id_ejercicio)   : (BOOT.metaDefaults?.id_ejercicio   ?? ''));
+
+      // Tipo y sesión: sólo lectura (divs, no inputs)
+      const roTipo   = document.getElementById('m_tipo_sesion_ro');
+      const roSesion = document.getElementById('m_sesion_ro');
+      if (roTipo)   roTipo.textContent   = d?.tipo_sesion_nombre || BOOT.metaDefaults?.tipo_sesion_ro || '—';
+      if (roSesion) roSesion.textContent = d?.sesion_nombre_cat  || BOOT.metaDefaults?.sesion_ro      || '—';
+
+      // Mesa directiva
+      setVal('m_presidente',   d?.presidente   ?? BOOT.metaDefaults?.presidente   ?? '');
+      setVal('m_secretaria_1', d?.secretaria_1 ?? BOOT.metaDefaults?.secretaria_1 ?? '');
+      setVal('m_secretaria_2', d?.secretaria_2 ?? BOOT.metaDefaults?.secretaria_2 ?? '');
 
       enforceUniqueDiputados();
     }
@@ -669,20 +679,18 @@
       }
 
       const body = new URLSearchParams();
-      body.append('acta_id', actaId);
-      body.append('clave_acta', document.getElementById('m_clave_acta').value);
-      body.append('tipo_sesion', document.getElementById('m_tipo_sesion').value);
-      body.append('legislatura', document.getElementById('m_legislatura').value);
-      body.append('legislatura_texto', document.getElementById('m_legislatura_texto').value);
-      body.append('periodo', document.getElementById('m_periodo').value);
-      body.append('ejercicio', document.getElementById('m_ejercicio').value);
-      body.append('fecha', document.getElementById('m_fecha').value);
-      body.append('hora_inicio', document.getElementById('m_hora_inicio').value);
-      body.append('ciudad', document.getElementById('m_ciudad').value);
-      body.append('recinto', document.getElementById('m_recinto').value);
-      body.append('presidente', pres);
-      body.append('secretaria_1', s1);
-      body.append('secretaria_2', s2);
+      body.append('acta_id',        actaId);
+      body.append('clave_acta',     document.getElementById('m_clave_acta').value);
+      body.append('id_legislatura', document.getElementById('m_legislatura')?.value || '');
+      body.append('id_periodo',     document.getElementById('m_periodo')?.value     || '');
+      body.append('id_ejercicio',   document.getElementById('m_ejercicio')?.value   || '');
+      body.append('fecha',          document.getElementById('m_fecha').value);
+      body.append('hora_inicio',    document.getElementById('m_hora_inicio').value);
+      body.append('ciudad',         document.getElementById('m_ciudad').value);
+      body.append('recinto',        document.getElementById('m_recinto').value);
+      body.append('presidente',     pres);
+      body.append('secretaria_1',   s1);
+      body.append('secretaria_2',   s2);
 
       btnGuardarMeta.disabled = true;
 

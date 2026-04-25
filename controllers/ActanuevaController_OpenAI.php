@@ -3,6 +3,7 @@ require_once 'models/TranscripcionModel.php';
 require_once 'models/CorreccionModel.php';
 require_once 'models/ActaNuevaModel.php';
 require_once 'models/UsuarioModel.php';
+require_once 'models/DiputadoModel.php';
 
 class ActanuevaController
 {
@@ -44,10 +45,19 @@ $metaSesion = $this->corrModel->obtenerMetadatosPorCorreccion($idCorreccion);
         // ¿Ya existe acta generada?
         $acta = $this->actaModel->obtenerPorTranscripcion($idTrans);
         
-        // ✅ NUEVO: Traer diputados activos para los selects del modal
+        // Diputados para selects de mesa directiva
         $usuarioModel = new UsuarioModel();
-        // usa el método que te recomendé (o ajusta al nombre que tengas)
-        $diputados = $usuarioModel->obtenerDiputadosActivos();
+        $diputados    = $usuarioModel->obtenerDiputadosActivos();
+
+        // Catálogos normalizados para el modal de metadatos
+        $dipModel     = new DiputadoModel();
+        $legActiva    = $dipModel->legislaturaActiva();
+        $legislaturas  = $this->corrModel->obtenerLegislaturas();
+        $cat_periodo   = $this->corrModel->obtenerCatPeriodo();
+        $cat_ejercicio = $this->corrModel->obtenerCatEjercicio();
+
+        // Metadata existente del acta (con joins completos)
+        $metaActa = $this->actaModel->obtenerMetadataCompleta($acta['id'] ?? 0);
 
         $view = __DIR__ . '/../views/acta_nueva/iniciar.php';
         include __DIR__ . '/../layout.php';
@@ -811,12 +821,11 @@ private function corteDuroConTraslape(string $texto, int $maxLen, int $overlap =
             }
 
             $m = new ActaNuevaModel();
-            $row = $m->obtenerMetadata($actaId);
+            $row = $m->obtenerMetadataCompleta($actaId);
 
-            // ✅ si no hay registro, NO es error
             echo json_encode([
                 'ok' => true,
-                'data' => $row // null si no existe
+                'data' => $row
             ], JSON_UNESCAPED_UNICODE);
         }
 
@@ -830,36 +839,49 @@ private function corteDuroConTraslape(string $texto, int $maxLen, int $overlap =
                 return;
             }
 
-            // Limpieza básica
+            // IDs de catálogos normalizados
+            $idLegislatura = (int)($_POST['id_legislatura'] ?? 0);
+            $idPeriodo     = (int)($_POST['id_periodo']     ?? 0);
+            $idEjercicio   = (int)($_POST['id_ejercicio']   ?? 0);
+
+            // Resolver textos desde catálogos (para el prompt del encabezado)
+            $legNombre = $legClave = $periodoNombre = $ejercicioNombre = '';
+            foreach ($this->corrModel->obtenerLegislaturas() as $l) {
+                if ((int)$l['id'] === $idLegislatura) {
+                    $legClave   = $l['clave'];
+                    $legNombre  = $l['nombre'];
+                    break;
+                }
+            }
+            foreach ($this->corrModel->obtenerCatPeriodo() as $p) {
+                if ((int)$p['id'] === $idPeriodo) { $periodoNombre = $p['nombre']; break; }
+            }
+            foreach ($this->corrModel->obtenerCatEjercicio() as $e) {
+                if ((int)$e['id'] === $idEjercicio) { $ejercicioNombre = $e['nombre']; break; }
+            }
+
             $data = [
-                'clave_acta'        => trim($_POST['clave_acta'] ?? ''),
-                'tipo_sesion'       => trim($_POST['tipo_sesion'] ?? 'Ordinaria'),
-                'legislatura'       => trim($_POST['legislatura'] ?? 'LXIV'),
-                'legislatura_texto' => trim($_POST['legislatura_texto'] ?? ''),
-                'periodo'           => trim($_POST['periodo'] ?? ''),
-                'ejercicio'         => trim($_POST['ejercicio'] ?? ''),
-                'fecha'             => trim($_POST['fecha'] ?? ''),        // YYYY-MM-DD
-                'hora_inicio'       => trim($_POST['hora_inicio'] ?? ''),  // HH:MM (o HH:MM:SS)
-                'ciudad'            => trim($_POST['ciudad'] ?? 'Mérida'),
-                'recinto'           => trim($_POST['recinto'] ?? ''),
-                'presidente'        => trim($_POST['presidente'] ?? ''),
-                'secretaria_1'      => trim($_POST['secretaria_1'] ?? ''),
-                'secretaria_2'      => trim($_POST['secretaria_2'] ?? ''),
+                'clave_acta'  => trim($_POST['clave_acta']  ?? ''),
+                'fecha'       => trim($_POST['fecha']        ?? ''),
+                'hora_inicio' => trim($_POST['hora_inicio']  ?? ''),
+                'ciudad'      => trim($_POST['ciudad']       ?? 'Mérida'),
+                'recinto'     => trim($_POST['recinto']      ?? ''),
+                'presidente'  => trim($_POST['presidente']   ?? ''),
+                'secretaria_1'=> trim($_POST['secretaria_1'] ?? ''),
+                'secretaria_2'=> trim($_POST['secretaria_2'] ?? ''),
             ];
 
-            // ✅ Validación: no permitir duplicados entre presidente/secretarias
-            $ids = array_filter([
-                $data['presidente'],
-                $data['secretaria_1'],
-                $data['secretaria_2']
-            ]);
-
-            if (count($ids) !== count(array_unique($ids))) {
+            $mesaIds = array_filter([$data['presidente'], $data['secretaria_1'], $data['secretaria_2']]);
+            if (count($mesaIds) !== count(array_unique($mesaIds))) {
                 echo json_encode(['ok' => false, 'error' => 'No se puede repetir la misma persona en Presidente/Secretarías.'], JSON_UNESCAPED_UNICODE);
                 return;
             }
 
             $ok = $this->actaModel->guardarOActualizarMetadata($actaId, $data);
+
+            if ($ok && $idLegislatura > 0) {
+                $this->actaModel->guardarCatalogosEnMetadata($actaId, $idLegislatura, $idPeriodo ?: null, $idEjercicio ?: null);
+            }
 
             echo json_encode(['ok' => (bool)$ok, 'error' => $ok ? null : 'No se pudo guardar metadata'], JSON_UNESCAPED_UNICODE);
 
@@ -875,15 +897,23 @@ private function corteDuroConTraslape(string $texto, int $maxLen, int $overlap =
                     return;
                 }
 
-                // 1) Traer metadata
-                $meta = $this->actaModel->obtenerMetadata($actaId);
+                // 1) Traer metadata completa (con joins a sesion_metadatos y catálogos)
+                $meta = $this->actaModel->obtenerMetadataCompleta($actaId);
                 if (!$meta) {
                     echo json_encode(['ok' => false, 'error' => 'Primero guarda los metadatos del acta.'], JSON_UNESCAPED_UNICODE);
                     return;
                 }
 
-                // 2) Validación mínima (ajusta según tus campos obligatorios)
-                $required = ['clave_acta','tipo_sesion','legislatura','legislatura_texto','periodo','ejercicio','fecha','hora_inicio','ciudad','recinto','presidente','secretaria_1'];
+                // Resolver textos desde el join (los campos de texto ya no existen en acta_metadata)
+                $meta['tipo_sesion']       = $meta['tipo_sesion_nombre'] ?? '';
+                $meta['sesion']            = $meta['sesion_nombre_cat']  ?? '';
+                $meta['legislatura_texto'] = $meta['leg_nombre']         ?? '';
+                $meta['legislatura']       = $meta['leg_clave']          ?? '';
+                $meta['periodo']           = $meta['periodo_nombre']     ?? '';
+                $meta['ejercicio']         = $meta['ejercicio_nombre']   ?? '';
+
+                // 2) Validación mínima
+                $required = ['clave_acta','legislatura_texto','periodo','ejercicio','fecha','hora_inicio','ciudad','recinto','presidente','secretaria_1'];
                 foreach ($required as $k) {
                     if (!isset($meta[$k]) || trim((string)$meta[$k]) === '') {
                         echo json_encode(['ok' => false, 'error' => "Falta completar el metadato: $k"], JSON_UNESCAPED_UNICODE);
@@ -943,6 +973,7 @@ private function corteDuroConTraslape(string $texto, int $maxLen, int $overlap =
                 "METADATOS:\n" .
                 "Clave del acta: {$meta['clave_acta']}\n" .
                 "Tipo de sesión: {$meta['tipo_sesion']}\n" .
+                "Sesión: " . ($meta['sesion'] ?? '') . "\n" .
                 "Legislatura (texto): {$meta['legislatura_texto']}\n" .
                 "Fecha (texto oficial): {$fechaTexto}\n" .
                 "Ciudad: {$meta['ciudad']}\n" .
@@ -1161,8 +1192,10 @@ private function corteDuroConTraslape(string $texto, int $maxLen, int $overlap =
                 die("No se encontró la plantilla: $templatePath");
             }
 
-            // 1) Partes del encabezado (solo clave y titulo; ya no "mesa")
-            [$claveActa, $tituloActa] = $this->parseEncabezadoAI_simple($encRaw);
+            // 1) Clave desde BD (evita doble encabezado al parsear el AI output)
+            //    Título se extrae del encabezado_ai buscando la línea "ACTA DE LA..."
+            $claveActa  = trim((string)($meta['clave_acta'] ?? ''));
+            [, $tituloActa] = $this->parseEncabezadoAI_simple($encRaw);
 
             // 2) Nombres de presidente y secretarios (desde IDs guardados en metadata)
             $idPres = (int)($meta['presidente'] ?? 0);
@@ -1203,14 +1236,17 @@ private function corteDuroConTraslape(string $texto, int $maxLen, int $overlap =
             $tpl->setValue('FIRMA_SECRETARIO_1', $sec1Nombre ?: '');
             $tpl->setValue('FIRMA_SECRETARIO_2', $sec2Nombre ?: '');
 
-            $tpl->setValue('PRIMER_PARRAFO', $parRaw);
-            $tpl->setValue('CUERPO_ACTA', $cuerpoRaw);
+            $tpl->setValue('PRIMER_PARRAFO', '___PRIMER_PARRAFO___');
+            $tpl->setValue('CUERPO_ACTA',    '___CUERPO_ACTA___');
 
             // 4) Guardar y descargar
             $fileName = "Acta_$actaId.docx";
             $tmpPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $fileName;
 
             $tpl->saveAs($tmpPath);
+
+            $this->injectTextoJustificado($tmpPath, '___PRIMER_PARRAFO___', $parRaw);
+            $this->injectTextoJustificado($tmpPath, '___CUERPO_ACTA___',    $cuerpoRaw);
 
             if (!file_exists($tmpPath) || filesize($tmpPath) < 2000) {
                 die("No se generó el DOCX correctamente. tmpPath=$tmpPath");
@@ -1311,24 +1347,83 @@ private function corteDuroConTraslape(string $texto, int $maxLen, int $overlap =
             return [$clave, $titulo, $mesa];
         }
 
+        private function injectTextoJustificado(string $tmpPath, string $marcador, string $texto): void
+        {
+            $zip = new \ZipArchive();
+            if ($zip->open($tmpPath) !== true) return;
+
+            $docXml = $zip->getFromName('word/document.xml');
+            if ($docXml === false) { $zip->close(); return; }
+
+            $pos = strpos($docXml, $marcador);
+            if ($pos === false) { $zip->close(); return; }
+
+            $before   = substr($docXml, 0, $pos);
+            $posP     = strrpos($before, '<w:p>');
+            $posPS    = strrpos($before, '<w:p ');
+            $startPos = max($posP !== false ? $posP : -1, $posPS !== false ? $posPS : -1);
+            if ($startPos < 0) { $zip->close(); return; }
+
+            $endPos = strpos($docXml, '</w:p>', $pos);
+            if ($endPos === false) { $zip->close(); return; }
+            $endPos += strlen('</w:p>');
+
+            $parrafoTpl = substr($docXml, $startPos, $endPos - $startPos);
+
+            // Extraer pPr y garantizar justificado "both"
+            $pPr = '<w:pPr><w:jc w:val="both"/></w:pPr>';
+            if (preg_match('/<w:pPr>.*?<\/w:pPr>/s', $parrafoTpl, $m)) {
+                $pPr = $m[0];
+                if (!preg_match('/<w:jc\s/', $pPr)) {
+                    $pPr = str_replace('</w:pPr>', '<w:jc w:val="both"/></w:pPr>', $pPr);
+                }
+            }
+
+            // Extraer rPr (propiedades de fuente del run)
+            $rPr = '';
+            if (preg_match('/<w:rPr>.*?<\/w:rPr>/s', $parrafoTpl, $m)) {
+                $rPr = $m[0];
+            }
+
+            // Construir XML: un <w:p> por cada párrafo + párrafo vacío de separación
+            $parrafos     = preg_split('/\n{2,}/', trim($texto));
+            $parrafos     = array_values(array_filter(array_map('trim', $parrafos)));
+            $parrafoVacio = '<w:p>' . $pPr . '</w:p>';
+
+            $newXml = '';
+            $total  = count($parrafos);
+            foreach ($parrafos as $idx => $p) {
+                $lines  = explode("\n", $p);
+                $runXml = '';
+                foreach ($lines as $i => $linea) {
+                    if ($i > 0) $runXml .= '<w:br/>';
+                    $runXml .= '<w:t xml:space="preserve">' . htmlspecialchars($linea, ENT_XML1) . '</w:t>';
+                }
+                $newXml .= '<w:p>' . $pPr . '<w:r>' . $rPr . $runXml . '</w:r></w:p>';
+                if ($idx < $total - 1) {
+                    $newXml .= $parrafoVacio;
+                }
+            }
+
+            $docXml = substr($docXml, 0, $startPos) . $newXml . substr($docXml, $endPos);
+            $zip->addFromString('word/document.xml', $docXml);
+            $zip->close();
+        }
+
         private function parseEncabezadoAI_simple($encRaw)
         {
             $lines = preg_split("/\R+/", trim((string)$encRaw));
             $lines = array_values(array_filter(array_map('trim', $lines), fn($x) => $x !== ''));
 
-            $clave = '';
             $titulo = '';
-
             foreach ($lines as $ln) {
-                if ($clave === '' && preg_match('/^acta\s+/i', $ln)) {
-                    $clave = $ln;
-                }
                 if ($titulo === '' && preg_match('/^ACTA DE LA\s+/iu', $ln)) {
                     $titulo = $ln;
                 }
             }
 
-            return [$clave, $titulo];
+            // La clave siempre viene de $meta['clave_acta'] en el caller.
+            return ['', $titulo];
         }
 //--------------------------------------------------------------------------------------------
 // DE AQUI EN ADELANTE FUNCIONES PARA SINTESIS DEL ACTA
@@ -1751,8 +1846,9 @@ public function descargarWordSintesis()
         die("No se encontró la plantilla: $templatePath");
     }
 
-    // 1) Clave y título base desde encabezado del acta
-    [$claveActa, $tituloActa] = $this->parseEncabezadoAI_simple($encRaw);
+    // 1) Clave desde BD; título desde encabezado_ai
+    $claveActa  = trim((string)($meta['clave_acta'] ?? ''));
+    [, $tituloActa] = $this->parseEncabezadoAI_simple($encRaw);
 
     // 2) Convertir el título a "SÍNTESIS DEL ..."
     $tituloSintesis = $this->tituloActaToTituloSintesis($tituloActa);
@@ -1794,13 +1890,15 @@ public function descargarWordSintesis()
     $tpl->setValue('FIRMA_SECRETARIO_1', $sec1Nombre ?: '');
     $tpl->setValue('FIRMA_SECRETARIO_2', $sec2Nombre ?: '');
 
-    $tpl->setValue('CUERPO_SINTESIS', $cuerpoSintesis);
+    $tpl->setValue('CUERPO_SINTESIS', '___CUERPO_SINTESIS___');
 
     // 5) Guardar y descargar
     $fileName = "Sintesis_Acta_$actaId.docx";
     $tmpPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $fileName;
 
     $tpl->saveAs($tmpPath);
+
+    $this->injectTextoJustificado($tmpPath, '___CUERPO_SINTESIS___', $cuerpoSintesis);
 
     if (!file_exists($tmpPath) || filesize($tmpPath) < 2000) {
         die("No se generó el DOCX correctamente. tmpPath=$tmpPath");

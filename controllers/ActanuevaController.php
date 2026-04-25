@@ -972,7 +972,8 @@ class ActanuevaController
         $templatePath = __DIR__ . '/../templates/acta_template.docx';
         if (!file_exists($templatePath)) { die("No se encontró la plantilla: $templatePath"); }
 
-        [$claveActa, $tituloActa] = $this->parseEncabezadoAI_simple($encRaw);
+        $claveActa  = trim((string)($meta['clave_acta'] ?? ''));
+        [, $tituloActa] = $this->parseEncabezadoAI_simple($encRaw);
 
         $idPres = (int)($meta['presidente'] ?? 0);
         $idS1   = (int)($meta['secretaria_1'] ?? 0);
@@ -1099,15 +1100,16 @@ class ActanuevaController
         $lines = preg_split("/\R+/", trim((string)$encRaw));
         $lines = array_values(array_filter(array_map('trim', $lines), fn($x) => $x !== ''));
 
-        $clave  = '';
         $titulo = '';
-
         foreach ($lines as $ln) {
-            if ($clave  === '' && preg_match('/^acta\s+/i', $ln)) { $clave  = $ln; }
-            if ($titulo === '' && preg_match('/^ACTA DE LA\s+/iu', $ln)) { $titulo = $ln; }
+            if ($titulo === '' && preg_match('/^ACTA DE LA\s+/iu', $ln)) {
+                $titulo = $ln;
+            }
         }
 
-        return [$clave, $titulo];
+        // La clave ahora siempre viene de $meta['clave_acta'] en el caller;
+        // devolvemos string vacío como primer elemento para mantener compatibilidad.
+        return ['', $titulo];
     }
 
     // ============================================================
@@ -1454,7 +1456,8 @@ class ActanuevaController
         $templatePath = __DIR__ . '/../templates/sintesis_template.docx';
         if (!file_exists($templatePath)) { die("No se encontró la plantilla: $templatePath"); }
 
-        [$claveActa, $tituloActa] = $this->parseEncabezadoAI_simple($encRaw);
+        $claveActa  = trim((string)($meta['clave_acta'] ?? ''));
+        [, $tituloActa] = $this->parseEncabezadoAI_simple($encRaw);
         $tituloSintesis = $this->tituloActaToTituloSintesis($tituloActa);
 
         $idPres = (int)($meta['presidente'] ?? 0);
