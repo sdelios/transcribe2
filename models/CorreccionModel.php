@@ -141,13 +141,17 @@ class CorreccionModel {
     //     OBTENER METADATOS POR CORRECCIÓN
     // ===========================================================
     public function obtenerMetadatosPorCorreccion($idCorreccion) {
-        $sql = "SELECT * FROM sesion_metadatos WHERE iIdCorreccion = ? LIMIT 1";
+        $sql = "SELECT sm.*,
+                       ts.cCatTipoSesiones AS tipo_sesion_nombre,
+                       cs.cNombreCatSesion AS sesion_nombre_cat
+                FROM sesion_metadatos sm
+                LEFT JOIN cattiposesesiones ts ON ts.iIdCatTipoSesiones = sm.iIdCatTipoSesiones
+                LEFT JOIN catsesiones       cs ON cs.iIdCatSesion       = sm.iIdCatSesion
+                WHERE sm.iIdCorreccion = ? LIMIT 1";
         $stmt = $this->conn->prepare($sql);
         if (!$stmt) return null;
-
         $stmt->bind_param("i", $idCorreccion);
         $stmt->execute();
-
         $res = $stmt->get_result();
         return $res ? $res->fetch_assoc() : null;
     }
@@ -233,6 +237,23 @@ class CorreccionModel {
             'ok' => true,
             'affected_rows' => (int)$stmt->affected_rows
         ];
+    }
+
+    public function obtenerMetadatosPorTranscripcion(int $idTranscripcion) {
+        $sql = "SELECT sm.*,
+                       ts.cCatTipoSesiones AS tipo_sesion_nombre,
+                       cs.cNombreCatSesion AS sesion_nombre_cat
+                FROM sesion_metadatos sm
+                LEFT JOIN cattiposesesiones ts ON ts.iIdCatTipoSesiones = sm.iIdCatTipoSesiones
+                LEFT JOIN catsesiones       cs ON cs.iIdCatSesion       = sm.iIdCatSesion
+                WHERE sm.iIdTranscripcion = ?
+                ORDER BY sm.iIdCorreccion DESC LIMIT 1";
+        $stmt = $this->conn->prepare($sql);
+        if (!$stmt) return null;
+        $stmt->bind_param("i", $idTranscripcion);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        return $res ? $res->fetch_assoc() : null;
     }
 
     public function obtenerLegislaturas(): array {

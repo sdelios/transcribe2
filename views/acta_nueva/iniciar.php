@@ -28,9 +28,9 @@ $selLeg  = $metaActa['id_legislatura'] ?? ($legActiva['id'] ?? '');
 $selPer  = $metaActa['id_periodo']     ?? '';
 $selEj   = $metaActa['id_ejercicio']   ?? '';
 
-// Tipo y sesión (read-only, vienen de sesion_metadatos via join)
-$tipoSesionNombre = $metaActa['tipo_sesion_nombre'] ?? ($metaSesion['cCatTipoSesiones'] ?? '');
-$sesionNombre     = $metaActa['sesion_nombre_cat']  ?? ($metaSesion['cNombreCatSesion'] ?? '');
+// Tipo y sesión (read-only): prioriza metaActa completa, fallback a sesion_metadatos con JOINs
+$tipoSesionNombre = $metaActa['tipo_sesion_nombre'] ?? ($metaSesion['tipo_sesion_nombre'] ?? '');
+$sesionNombre     = $metaActa['sesion_nombre_cat']  ?? ($metaSesion['sesion_nombre_cat']  ?? '');
 
 // Boot para JS
 $metaDefaults = [

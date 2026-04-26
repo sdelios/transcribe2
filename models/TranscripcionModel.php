@@ -35,7 +35,16 @@ public function guardarTranscripcion($titulo, $fecha, $link, $texto, $idAudio, $
 
 
     public function obtenerTodas() {
-        $resultado = $this->conn->query("SELECT t.*, m.cNombreModeloTrans FROM transcripciones t LEFT JOIN modelotrans m ON t.iIdModeloTrans = m.iIdModeloTrans ORDER BY iIdTrans DESC");
+        $resultado = $this->conn->query("
+            SELECT t.*, m.cNombreModeloTrans,
+                   an.id AS acta_id,
+                   (an.texto_acta IS NOT NULL AND an.texto_acta != '') AS tiene_acta,
+                   (an.texto_sintesis IS NOT NULL AND an.texto_sintesis != '') AS tiene_sintesis
+            FROM transcripciones t
+            LEFT JOIN modelotrans m ON t.iIdModeloTrans = m.iIdModeloTrans
+            LEFT JOIN actas_nuevas an ON an.transcripcion_id = t.iIdTrans
+            ORDER BY t.iIdTrans DESC
+        ");
         return $resultado->fetch_all(MYSQLI_ASSOC);
     }
 

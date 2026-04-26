@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(./mysql/bin/mysql.exe -u root -e \"DESC transcriptor.actas_nuevas;\")",
-      "Bash(./php/php.exe -r ' *)"
+      "Bash(./php/php.exe -r ' *)",
+      "Bash(xargs ls *)"
     ]
   }
 }

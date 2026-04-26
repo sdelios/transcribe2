@@ -311,7 +311,54 @@ h3 {
 }
 
 .btn-warning {
-    background-color: #fd7e14;
+    background-color: #dc3545;
+    border-color: #dc3545;
+    color: #fff;
+}
+
+.btn-warning:hover {
+    background-color: #bb2d3b;
+    border-color: #bb2d3b;
+    color: #fff;
+}
+
+td .btn-warning,
+th .btn-warning {
+    background-color: #28a745;
+    border-color: #28a745;
+    color: #fff;
+}
+
+td .btn-warning:hover,
+th .btn-warning:hover {
+    background-color: #1e7e34;
+    border-color: #1e7e34;
+    color: #fff;
+}
+
+/* Iconos de acciones en la lista de transcripciones */
+.acciones-lista {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.accion-icono {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    flex-shrink: 0;
+    transition: opacity 0.15s, transform 0.1s;
+}
+
+.accion-icono:hover {
+    opacity: 0.75;
+    transform: scale(1.1);
+}
+
+.accion-disabled {
+    cursor: not-allowed;
 }
 
 .btn-danger {

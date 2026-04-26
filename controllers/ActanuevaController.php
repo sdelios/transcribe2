@@ -26,28 +26,31 @@ class ActanuevaController
         if ($idTrans <= 0) { echo "ID de transcripción inválido"; return; }
 
         $trans = $this->transModel->obtenerPorId($idTrans);
-        if (!$trans) {
-            echo "Transcripción no encontrada";
-            return;
-        }
+        if (!$trans) { echo "Transcripción no encontrada"; return; }
 
         $ultimaCorr = $this->corrModel->obtenerUltima($idTrans);
-        $idCorreccion = (int)$ultimaCorr['id'];
-        $metaSesion = $this->corrModel->obtenerMetadatosPorCorreccion($idCorreccion);
-
         if (!$ultimaCorr) {
             echo "No hay transcripción taquigráfica corregida. Primero realiza la revisión ortográfica.";
             return;
         }
 
-        $acta = $this->actaModel->obtenerPorTranscripcion($idTrans);
+        $idCorreccion = (int)$ultimaCorr['id'];
+        $metaSesion   = $this->corrModel->obtenerMetadatosPorCorreccion($idCorreccion);
 
-        $usuarioModel = new UsuarioModel();
-        $diputados    = $usuarioModel->obtenerDiputadosActivos();
+        $acta   = $this->actaModel->obtenerPorTranscripcion($idTrans);
+        $idActa = $acta ? (int)$acta['id'] : null;
+        $metaActa = $idActa ? $this->actaModel->obtenerMetadataCompleta($idActa) : null;
 
-        $dipModel     = new DiputadoModel();
-        $legActiva    = $dipModel->legislaturaActiva();
-        $tiposSesion  = $this->corrModel->obtenerTiposSesionActivos();
+        $usuarioModel  = new UsuarioModel();
+        $diputados     = $usuarioModel->obtenerDiputadosActivos();
+
+        $dipModel      = new DiputadoModel();
+        $legActiva     = $dipModel->legislaturaActiva();
+
+        $tiposSesion   = $this->corrModel->obtenerTiposSesionActivos();
+        $legislaturas  = $this->corrModel->obtenerLegislaturas();
+        $cat_periodo   = $this->corrModel->obtenerCatPeriodo();
+        $cat_ejercicio = $this->corrModel->obtenerCatEjercicio();
 
         $view = __DIR__ . '/../views/acta_nueva/iniciar.php';
         include __DIR__ . '/../layout.php';
@@ -125,14 +128,14 @@ class ActanuevaController
             return;
         }
 
-        $modelo    = "claude-sonnet-4-6";
+        $modelo    = "claude-haiku-4-5-20251001";
         $contexto  = "";
         $actaFinal = "";
         $indice    = 0;
 
         foreach ($chunks as $chunk) {
             $indice++;
-            if ($indice > 1) sleep(5);
+            if ($indice > 1) sleep(1);
             $porcentaje = $totalChunks > 0 ? round(($indice / $totalChunks) * 100) : 0;
 
             @file_put_contents(
@@ -429,7 +432,7 @@ class ActanuevaController
 
         $payload = [
             "model"       => $modelo,
-            "max_tokens"  => 12000,
+            "max_tokens"  => 5000,
             "temperature" => 0.15,
             "system" => [
                 [
@@ -532,9 +535,10 @@ class ActanuevaController
     {
         $s = trim($s);
 
+        // Strip markdown code fence (con flag 's' para que $ no falle en strings multilinea)
         if (str_starts_with($s, '```')) {
             $s = preg_replace('/^```(?:json)?\s*/i', '', $s);
-            $s = preg_replace('/\s*```$/', '', $s);
+            $s = preg_replace('/\s*```$/s', '', $s);
             $s = trim($s);
         }
 
@@ -550,12 +554,28 @@ class ActanuevaController
 
         $s = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/u', '', $s);
 
+        // Intento 1: decodificación directa
         $data = json_decode($s, true);
-        if (!is_array($data)) {
-            throw new RuntimeException('json_decode: ' . json_last_error_msg());
+        if (is_array($data)) return $data;
+
+        // Intento 2: Claude a veces pone saltos de línea literales DENTRO de los valores
+        // de string (inválido en JSON). Los escapamos correctamente y reintentamos.
+        $sanitized = preg_replace_callback(
+            '/"(?:[^"\\\\]|\\\\.)*"/s',
+            static function ($m) {
+                $str = $m[0];
+                $str = str_replace(["\r\n", "\n", "\r", "\t"], ['\\n', '\\n', '\\r', '\\t'], $str);
+                return $str;
+            },
+            $s
+        );
+
+        if ($sanitized !== null) {
+            $data = json_decode($sanitized, true);
+            if (is_array($data)) return $data;
         }
 
-        return $data;
+        throw new RuntimeException('json_decode: ' . json_last_error_msg());
     }
 
     // ============================================================
@@ -616,19 +636,12 @@ class ActanuevaController
         $jsonOuter  = json_decode($resp, true);
         $content    = trim((string)($jsonOuter['content'][0]['text'] ?? ''));
 
-        $decoded = json_decode($content, true);
-        if (is_array($decoded)) {
+        try {
+            $decoded = $this->decode_json_robusto($content);
             $decoded['__ok'] = true;
             return $decoded;
-        }
-
-        // Intenta extraer JSON si vino con texto extra
-        if (preg_match('/\{(?:[^{}]|(?R))*\}/s', $content, $m)) {
-            $decoded2 = json_decode($m[0], true);
-            if (is_array($decoded2)) {
-                $decoded2['__ok'] = true;
-                return $decoded2;
-            }
+        } catch (Throwable $e) {
+            // fall through
         }
 
         return [
@@ -653,8 +666,25 @@ class ActanuevaController
             return;
         }
 
-        $m   = new ActaNuevaModel();
-        $row = $m->obtenerMetadata($actaId);
+        $row = $this->actaModel->obtenerMetadataCompleta($actaId);
+
+        // Si el JOIN a sesion_metadatos no resolvió los nombres (correccion_id nulo
+        // o sin registro), los buscamos directamente desde sesion_metadatos
+        // usando el transcripcion_id del acta.
+        if ($row && empty($row['tipo_sesion_nombre'])) {
+            $acta = $this->actaModel->obtenerPorId($actaId);
+            if ($acta && !empty($acta['transcripcion_id'])) {
+                $metaSesion = $this->corrModel->obtenerMetadatosPorTranscripcion(
+                    (int)$acta['transcripcion_id']
+                );
+                if ($metaSesion) {
+                    $row['tipo_sesion_nombre'] = $metaSesion['tipo_sesion_nombre'] ?? '';
+                    $row['sesion_nombre_cat']  = $metaSesion['sesion_nombre_cat']  ?? '';
+                    $row['iIdCatTipoSesiones'] = $metaSesion['iIdCatTipoSesiones'] ?? null;
+                    $row['iIdCatSesion']       = $metaSesion['iIdCatSesion']       ?? null;
+                }
+            }
+        }
 
         echo json_encode(['ok' => true, 'data' => $row], JSON_UNESCAPED_UNICODE);
     }
@@ -714,16 +744,36 @@ class ActanuevaController
             return;
         }
 
-        $meta = $this->actaModel->obtenerMetadata($actaId);
+        $meta = $this->actaModel->obtenerMetadataCompleta($actaId);
         if (!$meta) {
             echo json_encode(['ok' => false, 'error' => 'Primero guarda los metadatos del acta.'], JSON_UNESCAPED_UNICODE);
             return;
         }
 
-        $required = ['clave_acta','tipo_sesion','legislatura','legislatura_texto','periodo','ejercicio','fecha','hora_inicio','ciudad','recinto','presidente','secretaria_1'];
-        foreach ($required as $k) {
+        // Campos que vienen de acta_metadata directamente
+        $requiredBase = ['clave_acta','fecha','hora_inicio','ciudad','recinto','presidente','secretaria_1'];
+        foreach ($requiredBase as $k) {
             if (!isset($meta[$k]) || trim((string)$meta[$k]) === '') {
-                echo json_encode(['ok' => false, 'error' => "Falta completar el metadato: $k"], JSON_UNESCAPED_UNICODE);
+                echo json_encode(['ok' => false, 'error' => "Falta completar el campo: $k"], JSON_UNESCAPED_UNICODE);
+                return;
+            }
+        }
+
+        // Campos resueltos desde sesion_metadatos y catálogos via JOIN
+        $tipoSesion       = trim((string)($meta['tipo_sesion_nombre'] ?? ''));
+        $legislaturaTexto = trim((string)($meta['leg_nombre']         ?? ''));
+        $periodoNombre    = trim((string)($meta['periodo_nombre']     ?? ''));
+        $ejercicioNombre  = trim((string)($meta['ejercicio_nombre']   ?? ''));
+
+        $derivados = [
+            'tipo de sesión (desde corrección ortográfica)' => $tipoSesion,
+            'legislatura'                                   => $legislaturaTexto,
+            'periodo'                                       => $periodoNombre,
+            'ejercicio constitucional'                      => $ejercicioNombre,
+        ];
+        foreach ($derivados as $label => $val) {
+            if ($val === '') {
+                echo json_encode(['ok' => false, 'error' => "Falta: $label. Verifica los datos en el modal."], JSON_UNESCAPED_UNICODE);
                 return;
             }
         }
@@ -773,9 +823,12 @@ class ActanuevaController
 
             "METADATOS:\n" .
             "Clave del acta: {$meta['clave_acta']}\n" .
-            "Tipo de sesión: {$meta['tipo_sesion']}\n" .
-            "Legislatura (texto): {$meta['legislatura_texto']}\n" .
+            "Tipo de sesión: {$tipoSesion}\n" .
+            "Legislatura (texto): {$legislaturaTexto}\n" .
+            "Periodo: {$periodoNombre}\n" .
+            "Ejercicio constitucional: {$ejercicioNombre}\n" .
             "Fecha (texto oficial): {$fechaTexto}\n" .
+            "Hora de inicio: {$meta['hora_inicio']}\n" .
             "Ciudad: {$meta['ciudad']}\n" .
             "Recinto: {$meta['recinto']}\n" .
             "Presidente: DIP. {$nombrePres}\n" .
@@ -784,7 +837,7 @@ class ActanuevaController
 
             "REGLAS PARA primer_parrafo_ai:\n" .
             "- Párrafo formal, estilo acta oficial. Longitud: entre 600 y 900 caracteres.\n" .
-            "- Incluir: ciudad, país, Diputados que integran la legislatura, recinto, tipo de sesión, periodo, ejercicio, debidamente convocados, fecha y hora.\n" .
+            "- Incluir: ciudad, país, Diputados que integran la legislatura, recinto, tipo de sesión, periodo, ejercicio constitucional, debidamente convocados, fecha y hora de inicio.\n" .
             "- NO inventes datos que no estén en los metadatos.\n";
 
         $promptHash = hash('sha256', $prompt);
@@ -867,18 +920,14 @@ class ActanuevaController
         $jsonOuter = json_decode($resp, true);
         $content   = trim((string)($jsonOuter['content'][0]['text'] ?? ''));
 
-        $decoded = json_decode($content, true);
-        if (is_array($decoded) && isset($decoded['encabezado_ai'], $decoded['primer_parrafo_ai'])) {
-            $decoded['__ok'] = true;
-            return $decoded;
-        }
-
-        if (preg_match('/\{(?:[^{}]|(?R))*\}/s', $content, $m)) {
-            $decoded2 = json_decode($m[0], true);
-            if (is_array($decoded2) && isset($decoded2['encabezado_ai'], $decoded2['primer_parrafo_ai'])) {
-                $decoded2['__ok'] = true;
-                return $decoded2;
+        try {
+            $decoded = $this->decode_json_robusto($content);
+            if (isset($decoded['encabezado_ai'], $decoded['primer_parrafo_ai'])) {
+                $decoded['__ok'] = true;
+                return $decoded;
             }
+        } catch (Throwable $e) {
+            // fall through
         }
 
         return [
@@ -1236,7 +1285,7 @@ class ActanuevaController
         $eventos = [];
 
         foreach ($chunks as $i => $chunk) {
-            if ($i > 0) sleep(8);
+            if ($i > 0) sleep(1);
             $r = $this->extraerEventosChunkClaude($chunk, $i + 1, count($chunks), $apiKey, $modelo);
             if (!empty($r['__ok']) && is_array($r['eventos'] ?? null)) {
                 foreach ($r['eventos'] as $ev) {
